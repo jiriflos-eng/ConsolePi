@@ -1,6 +1,6 @@
 # ConsolePi
 
-<img width="718" height="553" alt="ConsolePi - MAIN" src="https://github.com/user-attachments/assets/911fd4b6-fda4-4be1-9d5f-32ab78845392" />
+<img width="718" height="553" alt="ConsolePi - DBOARD" src="https://github.com/user-attachments/assets/911fd4b6-fda4-4be1-9d5f-32ab78845392" /><img width="359" height="276" alt="ConsolePI - HEALTH" src="https://github.com/user-attachments/assets/4408876b-0a74-4b4b-a5d3-8fa07a47aa8a" />
 
 ConsolePi turns a Raspberry Pi 3 into a secure, web-managed serial console
 server for network equipment. Each attached USB serial adapter is mapped to an
