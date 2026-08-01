@@ -22,6 +22,11 @@ available in English here and in Czech in [README.cs.md](README.cs.md).
 
 ## Quick installation on Raspberry Pi OS Lite
 
+Download the matching installer first from
+[downloads/ConsolePi-1.5.2-install.tar.gz](downloads/ConsolePi-1.5.2-install.tar.gz).
+Its [SHA-256 checksum](downloads/ConsolePi-1.5.2-install.tar.gz.sha256) is
+published alongside it.
+
 1. Use Raspberry Pi Imager to write **Raspberry Pi OS Lite (64-bit)** to the
    SD card. Configure an administrator named `consolepi`, enable SSH and use
    DHCP for the initial network connection.
