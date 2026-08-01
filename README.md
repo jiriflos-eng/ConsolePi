@@ -1,6 +1,8 @@
 # ConsolePi
 
-<img width="359" height="276" alt="ConsolePi - DBOARD" src="https://github.com/user-attachments/assets/911fd4b6-fda4-4be1-9d5f-32ab78845392" /><img width="359" height="276" alt="ConsolePI - HEALTH" src="https://github.com/user-attachments/assets/4408876b-0a74-4b4b-a5d3-8fa07a47aa8a" />
+<img width="359" height="276" alt="ConsolePi - DBOARD" src="https://github.com/user-attachments/assets/911fd4b6-fda4-4be1-9d5f-32ab78845392" /><img width="359" height="276" alt="ConsolePI - HEALTH" src="https://github.com/user-attachments/assets/4408876b-0a74-4b4b-a5d3-8fa07a47aa8a" /><img width="347" height="360" alt="Snímek obrazovky 2026-08-01 v 19 35 04" src="https://github.com/user-attachments/assets/0fe9cc1d-aa8b-46a6-94ae-c7070da7ab0f" />
+<img width="347" height="360" alt="Snímek obrazovky 2026-08-01 v 19 35 23" src="https://github.com/user-attachments/assets/edf5a3cd-bb01-410f-ba45-1c004b10984a" />
+
 
 ConsolePi turns a Raspberry Pi 3 into a secure, web-managed serial console
 server for network equipment. Each attached USB serial adapter is mapped to an
