@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Náhled logu · ConsolePi{% endblock %}
+{% block content %}
+{% set active_page = "system" %}
+{% include "_navigation.html" %}
+
+<div class="logs-heading">
+  <div>
+    <h1>Náhled logu</h1>
+    <p class="section-lead"><code>{{ log.path }}</code></p>
+  </div>
+  <a class="detail-link" href="{{ url_for('system_logs_page') }}">← Seznam logů</a>
+</div>
+<div class="log-meta">
+  <span>Velikost: <strong>{{ log.size_human }}</strong></span>
+  <span>Změněno: <strong>{{ log.modified_human }}</strong></span>
+  {% if log.truncated %}<span class="badge busy">Zobrazeno posledních 256 KiB</span>{% endif %}
+</div>
+<pre class="log-content">{{ log.content }}</pre>
+{% endblock %}

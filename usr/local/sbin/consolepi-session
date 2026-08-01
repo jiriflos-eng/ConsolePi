@@ -1,0 +1,280 @@
+#!/bin/sh
+set -eu
+
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+export PATH
+
+CONFIG=/etc/consolepi/consolepi.conf
+PORTS=/etc/consolepi/ports.conf
+SERIAL_CONFIG=/etc/consolepi/serial.conf
+AUTH_CONFIG=/etc/consolepi/auth.conf
+LABELS_CONFIG=/etc/consolepi/labels.json
+LOCK_DIR=/run/lock/consolepi
+
+log()
+{
+    logger -p authpriv.info -t consolepi -- "$*"
+}
+
+deny()
+{
+    printf '%s\n' "$1" >&2
+    log "DENY user=${USER:-unknown} client=${SSH_CONNECTION:-unknown} reason=$1"
+    exit 1
+}
+
+[ "${USER:-}" = console ] || deny "Tento program je urcen pouze pro ucet console."
+[ -n "${SSH_CONNECTION:-}" ] || deny "Relace musi byt spustena pres SSH."
+[ -t 0 ] && [ -t 1 ] || deny "Je vyzadovan terminal; pouzijte ssh -tt."
+
+# SSH_CONNECTION: client_ip client_port server_ip server_port
+set -- $SSH_CONNECTION
+[ "$#" -eq 4 ] || deny "Neplatne prostredi SSH_CONNECTION."
+CLIENT_IP=$1
+SERVER_IP=$3
+LOCAL_PORT=$4
+
+case "$LOCAL_PORT" in
+    *[!0-9]*|'') deny "Neplatny lokalni SSH port." ;;
+esac
+
+[ -r "$CONFIG" ] || deny "Chybi konfigurace $CONFIG."
+[ -r "$PORTS" ] || deny "Chybi mapa portu $PORTS."
+[ -r "$SERIAL_CONFIG" ] || deny "Chybi konfigurace $SERIAL_CONFIG."
+[ -r "$AUTH_CONFIG" ] || deny "Chybi konfigurace $AUTH_CONFIG."
+
+# Konfigurační soubor je rootem spravovaný a obsahuje pouze prostá přiřazení.
+. "$CONFIG"
+
+mapping=$(awk -F '|' -v port="$LOCAL_PORT" '
+    /^[[:space:]]*#/ || /^[[:space:]]*$/ { next }
+    $1 == port { print; found++ }
+    END { if (found != 1) exit 1 }
+' "$PORTS") || deny "SSH port $LOCAL_PORT neni jednoznacne nakonfigurovan."
+
+OLD_IFS=$IFS
+IFS='|'
+set -- $mapping
+IFS=$OLD_IFS
+[ "$#" -eq 3 ] || deny "Neplatny radek mapy pro port $LOCAL_PORT."
+PORT=$1
+DEVICE_NAME=$2
+SERIAL_DEVICE=$3
+
+serial_mapping=$(awk -F '|' -v port="$LOCAL_PORT" '
+    /^[[:space:]]*#/ || /^[[:space:]]*$/ { next }
+    $1 == port { print; found++ }
+    END { if (found != 1) exit 1 }
+' "$SERIAL_CONFIG") || deny "Serialove parametry portu $LOCAL_PORT nejsou jednoznacne nakonfigurovany."
+
+OLD_IFS=$IFS
+IFS='|'
+set -- $serial_mapping
+IFS=$OLD_IFS
+[ "$#" -eq 7 ] || deny "Neplatne seriove parametry pro port $LOCAL_PORT."
+SERIAL_PORT=$1
+SERIAL_BAUD=$2
+SERIAL_DATABITS=$3
+SERIAL_PARITY=$4
+SERIAL_STOPBITS=$5
+SERIAL_FLOW=$6
+SERIAL_ECHO=$7
+
+case "$SERIAL_BAUD" in 9600|19200|38400|57600|115200) ;; *) deny "Nepovolena rychlost." ;; esac
+case "$SERIAL_DATABITS" in 7|8) ;; *) deny "Nepovoleny pocet datovych bitu." ;; esac
+case "$SERIAL_PARITY" in none|even|odd) ;; *) deny "Nepovolena parita." ;; esac
+case "$SERIAL_STOPBITS" in 1|2) ;; *) deny "Nepovoleny pocet stop bitu." ;; esac
+case "$SERIAL_FLOW" in none|hard|soft) ;; *) deny "Nepovoleny flow control." ;; esac
+case "$SERIAL_ECHO" in yes|no) ;; *) deny "Nepovolene local echo." ;; esac
+
+case "$DEVICE_NAME" in
+    *[!A-Za-z0-9._-]*|'') deny "Neplatny nazev zarizeni v mape." ;;
+esac
+case "$SERIAL_DEVICE" in
+    /dev/serial/by-id/*|/dev/consolepi/*) ;;
+    *) deny "Serialova cesta musi byt pod /dev/serial/by-id nebo /dev/consolepi." ;;
+esac
+
+[ -e "$SERIAL_DEVICE" ] || deny "Serialove zarizeni $DEVICE_NAME neni pripojeno."
+[ -c "$(readlink -f "$SERIAL_DEVICE")" ] || deny "$SERIAL_DEVICE neni znakove zarizeni."
+
+# Popisek je provozní název právě připojeného kabelu.  Technický název portu
+# zůstává pro locky a logy, aby změna popisku nikdy neovlivnila bezpečnost.
+CONSOLE_TITLE=$(python3 -c '
+import json
+import sys
+try:
+    labels = json.load(open(sys.argv[1], encoding="utf-8"))
+    print(str(labels.get(sys.argv[2]) or sys.argv[3]).strip())
+except (OSError, ValueError, TypeError):
+    print(sys.argv[3])
+' "$LABELS_CONFIG" "$PORT" "$DEVICE_NAME" 2>/dev/null)
+[ -n "$CONSOLE_TITLE" ] || CONSOLE_TITLE=$DEVICE_NAME
+
+# V RADIUS režimu proběhlo ověření již uvnitř SSH keyboard-interactive/PAM.
+AUTH_MODE=local_key
+. "$AUTH_CONFIG"
+case "$AUTH_MODE" in
+    local|local_key|local_password)
+        AUTH_IDENTITY=$USER
+        ;;
+    radius)
+        AUTH_IDENTITY=${CONSOLEPI_RADIUS_USER:-radius-authenticated}
+        log "RADIUS_ACCEPT radius_user=$AUTH_IDENTITY client=$CLIENT_IP ssh_port=$PORT device=$DEVICE_NAME"
+        ;;
+    *)
+        deny "Neplatny rezim autentizace."
+        ;;
+esac
+
+mkdir -p "$LOCK_DIR"
+LOCK_FILE=$LOCK_DIR/$DEVICE_NAME.lock
+exec 9>"$LOCK_FILE"
+if ! flock -n 9; then
+    deny "Konzole $DEVICE_NAME je prave obsazena jinym uzivatelem."
+fi
+
+STARTED=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+log "OPEN user=$AUTH_IDENTITY auth=$AUTH_MODE client=$CLIENT_IP ssh_port=$PORT device=$DEVICE_NAME serial=$SERIAL_DEVICE"
+TRANSCRIPT_FIFO=
+WRITER_PID=
+cleanup()
+{
+    rc=$?
+    trap - EXIT HUP INT TERM
+    if [ -n "$WRITER_PID" ]; then
+        kill "$WRITER_PID" 2>/dev/null || true
+        wait "$WRITER_PID" 2>/dev/null || true
+    fi
+    [ -z "$TRANSCRIPT_FIFO" ] || rm -f "$TRANSCRIPT_FIFO"
+    log "CLOSE user=$AUTH_IDENTITY auth=$AUTH_MODE client=$CLIENT_IP ssh_port=$PORT device=$DEVICE_NAME started=$STARTED rc=$rc"
+    exit "$rc"
+}
+trap cleanup EXIT HUP INT TERM
+
+ECHO_OPTION=
+[ "$SERIAL_ECHO" = yes ] && ECHO_OPTION=--echo
+PICOCOM_CMD="picocom --quiet --baud $SERIAL_BAUD --databits $SERIAL_DATABITS --parity $SERIAL_PARITY --stopbits $SERIAL_STOPBITS --flow $SERIAL_FLOW $ECHO_OPTION --noreset --nolock $SERIAL_DEVICE"
+
+if [ "${TERM:-}" != dumb ]; then
+    ESC=$(printf '\033')
+    RESET="${ESC}[0m"
+    BOLD="${ESC}[1m"
+    CYAN="${ESC}[36m"
+    GREEN="${ESC}[32m"
+    DIM="${ESC}[2m"
+else
+    RESET=
+    BOLD=
+    CYAN=
+    GREEN=
+    DIM=
+fi
+
+# Rámeček má přesně 78 zobrazovaných buněk mezi svislými okraji. printf
+# ovšem počítá bajty, ne šířku znaků; názvy s diakritikou by proto posunuly
+# pravý okraj. Hodnoty nejprve zkrátíme/vyplníme podle šířky terminálu.
+fit_cells()
+{
+    python3 - "$1" "$2" <<'PY'
+import sys
+import unicodedata
+
+limit = int(sys.argv[1])
+text = sys.argv[2].replace("\n", " ").replace("\r", " ")
+out = []
+width = 0
+for char in text:
+    cells = 0 if unicodedata.combining(char) else (2 if unicodedata.east_asian_width(char) in "WF" else 1)
+    if width + cells > limit:
+        break
+    out.append(char)
+    width += cells
+print("".join(out) + " " * (limit - width), end="")
+PY
+}
+
+box_line()
+{
+    python3 - "$1" <<'PY'
+import re
+import sys
+import unicodedata
+
+text = sys.argv[1].replace("\n", " ").replace("\r", " ")
+plain = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", text)
+width = sum(0 if unicodedata.combining(c) else (2 if unicodedata.east_asian_width(c) in "WF" else 1) for c in plain)
+print(text + " " * max(0, 78 - width), end="")
+PY
+}
+
+SERIAL_ID=$(basename "$SERIAL_DEVICE")
+case "$SERIAL_ID" in
+    usb-*) SERIAL_ID=${SERIAL_ID#usb-} ;;
+esac
+SERIAL_ID=$(fit_cells 65 "$SERIAL_ID")
+CONSOLE_TITLE=$(fit_cells 65 "$CONSOLE_TITLE")
+
+printf '\n%s%s╭──────────────────────────────────────────────────────────────────────────────╮%s\n' "$BOLD" "$CYAN" "$RESET"
+printf '%s%s│%s│%s\n' "$BOLD" "$CYAN" "$(box_line '  ConsolePi · vzdalena seriova konzole')" "$RESET"
+printf '%s%s├──────────────────────────────────────────────────────────────────────────────┤%s\n' "$BOLD" "$CYAN" "$RESET"
+printf '│%s│\n' "$(box_line "  ${BOLD}Cil:${RESET}       $CONSOLE_TITLE")"
+printf '│%s│\n' "$(box_line "  ${BOLD}Stav:${RESET}      ${GREEN}$(fit_cells 65 PRIPOJENO)${RESET}")"
+printf '│%s│\n' "$(box_line "  ${BOLD}SSH:${RESET}       $(fit_cells 65 "$SERVER_IP:$PORT")")"
+case "$SERIAL_PARITY" in
+    none) SERIAL_PARITY_SHORT=N ;;
+    even) SERIAL_PARITY_SHORT=E ;;
+    odd) SERIAL_PARITY_SHORT=O ;;
+esac
+SERIAL_FORMAT="${SERIAL_BAUD} baud · ${SERIAL_DATABITS}${SERIAL_PARITY_SHORT}${SERIAL_STOPBITS} · flow ${SERIAL_FLOW} · echo ${SERIAL_ECHO}"
+printf '│%s│\n' "$(box_line "  ${BOLD}Linka:${RESET}     $(fit_cells 65 "$SERIAL_FORMAT")")"
+printf '│%s│\n' "$(box_line "  ${BOLD}USB ID:${RESET}    $SERIAL_ID")"
+printf '│%s│\n' "$(box_line "  ${BOLD}Web:${RESET}       ${CYAN}$(fit_cells 65 "https://$SERVER_IP/")${RESET}")"
+printf '%s%s╰──────────────────────────────────────────────────────────────────────────────╯%s\n' "$BOLD" "$CYAN" "$RESET"
+printf '  %sUkonceni:%s Ctrl-A, potom Ctrl-X  %s·  Cisco konzoli aktivujte klavesou Enter%s\n\n' "$BOLD" "$RESET" "$DIM" "$RESET"
+
+TRANSCRIPT_MODE=${TRANSCRIPT_MODE:-events}
+if [ "$TRANSCRIPT_MODE" != "events" ] &&
+    /usr/local/sbin/consolepi-log-maintain --can-record; then
+    umask 0027
+    TRANSCRIPT_PORT_DIR=${TRANSCRIPT_DIR:-/var/log/consolepi/transcripts}/$PORT
+    mkdir -p "$TRANSCRIPT_PORT_DIR"
+    STAMP=$(date -u +%Y%m%dT%H%M%SZ)
+    TRANSCRIPT=$TRANSCRIPT_PORT_DIR/${PORT}_${STAMP}_${CLIENT_IP}.active
+    TRANSCRIPT_FIFO=$LOCK_DIR/transcript-${PORT}-$$.fifo
+    rm -f "$TRANSCRIPT_FIFO"
+    mkfifo -m 0600 "$TRANSCRIPT_FIFO"
+    /usr/local/sbin/consolepi-transcript-writer "$TRANSCRIPT_MODE" "$TRANSCRIPT" <"$TRANSCRIPT_FIFO" &
+    WRITER_PID=$!
+    log "RECORD user=$USER device=$DEVICE_NAME file=$TRANSCRIPT"
+    set +e
+    if [ "$TRANSCRIPT_MODE" = output ]; then
+        SCRIPT_LOG_OPTION=--log-out
+    else
+        SCRIPT_LOG_OPTION=--log-io
+    fi
+    script --quiet --flush --return --force --echo never \
+        "$SCRIPT_LOG_OPTION" "$TRANSCRIPT_FIFO" --command "$PICOCOM_CMD"
+    rc=$?
+    set -e
+    rm -f "$TRANSCRIPT_FIFO"
+    TRANSCRIPT_FIFO=
+    wait "$WRITER_PID" || true
+    WRITER_PID=
+    exit "$rc"
+elif [ "$TRANSCRIPT_MODE" != events ]; then
+    log "RECORD_SKIPPED device=$DEVICE_NAME reason=disk_limit_or_reserve"
+fi
+
+picocom \
+    --quiet \
+    --baud "$SERIAL_BAUD" \
+    --databits "$SERIAL_DATABITS" \
+    --parity "$SERIAL_PARITY" \
+    --stopbits "$SERIAL_STOPBITS" \
+    --flow "$SERIAL_FLOW" \
+    $ECHO_OPTION \
+    --noreset \
+    --nolock \
+    "$SERIAL_DEVICE"
+exit $?

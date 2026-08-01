@@ -1,0 +1,23 @@
+[Unit]
+Description=ConsolePi web management
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=consolepi-web
+Group=consolepi-web
+WorkingDirectory=/opt/consolepi-web
+Environment=PYTHONUNBUFFERED=1
+StateDirectory=consolepi-web
+# První konfigurace vytváří SSH host klíče a HTTPS certifikát.  Výchozí
+# gunicorn timeout 30 s by na Raspberry Pi 3 mohl worker předčasně ukončit.
+ExecStart=/usr/bin/gunicorn --workers 2 --timeout 150 --graceful-timeout 150 --bind 127.0.0.1:8080 --access-logfile - app:APP
+Restart=on-failure
+RestartSec=3
+# Služba smí přes přesně omezené sudoers pravidlo spustit pouze
+# /usr/local/sbin/consolepi-control pro síť a správu veřejných klíčů.
+NoNewPrivileges=no
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

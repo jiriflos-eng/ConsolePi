@@ -1,0 +1,234 @@
+#!/usr/bin/python3
+import gzip
+import json
+import os
+import shutil
+import signal
+import subprocess
+import sys
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+
+CONFIG = Path("/etc/consolepi/consolepi.conf")
+PORTS = Path("/etc/consolepi/ports.conf")
+LOG_ROOT = Path("/var/log/consolepi")
+TRANSCRIPTS = LOG_ROOT / "transcripts"
+EVENT_LOG = LOG_ROOT / "ports.log"
+RUNNING = True
+
+
+def settings():
+    values = {
+        "TRANSCRIPT_ENABLED": "no",
+        "TRANSCRIPT_MODE": "events",
+        "TRANSCRIPT_MAX_TOTAL_MB": "256",
+        "TRANSCRIPT_MAX_SESSION_MB": "25",
+        "TRANSCRIPT_MIN_FREE_MB": "512",
+        "TRANSCRIPT_RETENTION_DAYS": "30",
+    }
+    if CONFIG.exists():
+        for line in CONFIG.read_text().splitlines():
+            key, separator, value = line.partition("=")
+            if separator and key in values:
+                values[key] = value.strip()
+    return values
+
+
+def transcript_files(include_active=True):
+    try:
+        if not TRANSCRIPTS.exists():
+            return []
+    except PermissionError:
+        # This command is also called from the unprivileged SSH console
+        # session.  A stale directory ownership must only disable recording,
+        # never print a Python traceback into the serial terminal.
+        return []
+    files = []
+    for path in TRANSCRIPTS.glob("*/*"):
+        if not path.is_file():
+            continue
+        if path.name.endswith((".log", ".log.gz")) or (
+            include_active and path.name.endswith(".active")
+        ):
+            files.append(path)
+    return files
+
+
+def usage_bytes():
+    return sum(path.stat().st_size for path in transcript_files())
+
+
+def free_bytes():
+    try:
+        return shutil.disk_usage(LOG_ROOT).free
+    except PermissionError:
+        return 0
+
+
+def maintain():
+    config = settings()
+    retention = int(config["TRANSCRIPT_RETENTION_DAYS"])
+    max_total = int(config["TRANSCRIPT_MAX_TOTAL_MB"]) * 1024 * 1024
+    min_free = int(config["TRANSCRIPT_MIN_FREE_MB"]) * 1024 * 1024
+    now = time.time()
+
+    for path in transcript_files(include_active=False):
+        age_days = (now - path.stat().st_mtime) / 86400
+        if age_days > retention:
+            path.unlink(missing_ok=True)
+        elif path.name.endswith(".log") and age_days >= 1:
+            compressed = path.with_suffix(path.suffix + ".gz")
+            with path.open("rb") as source, gzip.open(compressed, "wb", 6) as target:
+                shutil.copyfileobj(source, target)
+            os.chmod(compressed, 0o600)
+            os.chown(compressed, path.stat().st_uid, path.stat().st_gid)
+            path.unlink()
+
+    closed = sorted(
+        transcript_files(include_active=False),
+        key=lambda item: item.stat().st_mtime,
+    )
+    while closed and (usage_bytes() > max_total or free_bytes() < min_free):
+        closed.pop(0).unlink(missing_ok=True)
+
+
+def can_record():
+    try:
+        config = settings()
+        max_total = int(config["TRANSCRIPT_MAX_TOTAL_MB"]) * 1024 * 1024
+        min_free = int(config["TRANSCRIPT_MIN_FREE_MB"]) * 1024 * 1024
+        maintain()
+        return (
+            config["TRANSCRIPT_ENABLED"] == "yes"
+            and config["TRANSCRIPT_MODE"] != "events"
+            and usage_bytes() < max_total
+            and free_bytes() >= min_free
+        )
+    except (OSError, ValueError):
+        # Recording is optional.  The console itself must remain usable when
+        # a log path is temporarily inaccessible or its configuration is bad.
+        return False
+
+
+def port_records():
+    records = {}
+    for line in PORTS.read_text().splitlines():
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        port, name, device = line.split("|", 2)
+        records[port] = {
+            "name": name,
+            "device": device,
+            "connected": os.path.exists(device),
+        }
+    return records
+
+
+def event(port, record, state):
+    LOG_ROOT.mkdir(parents=True, exist_ok=True)
+    if EVENT_LOG.exists() and EVENT_LOG.stat().st_size >= 1024 * 1024:
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        rotated = LOG_ROOT / f"ports-{stamp}.log.gz"
+        with EVENT_LOG.open("rb") as source, gzip.open(rotated, "wb", 6) as target:
+            shutil.copyfileobj(source, target)
+        os.chmod(rotated, 0o640)
+        EVENT_LOG.unlink()
+        archives = sorted(
+            LOG_ROOT.glob("ports-*.log.gz"),
+            key=lambda item: item.stat().st_mtime,
+            reverse=True,
+        )
+        for old in archives[14:]:
+            old.unlink(missing_ok=True)
+    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    line = (
+        f"{timestamp} port={port} name={record['name']} "
+        f"state={state} device={record['device']}\n"
+    )
+    with EVENT_LOG.open("a") as handle:
+        handle.write(line)
+    os.chmod(EVENT_LOG, 0o640)
+    subprocess.run(
+        (
+            "logger", "-p", "authpriv.info", "-t", "consolepi",
+            f"USB_PORT port={port} name={record['name']} state={state} "
+            f"device={record['device']}",
+        ),
+        check=False,
+    )
+
+
+def stop(_signum, _frame):
+    global RUNNING
+    RUNNING = False
+
+
+def monitor():
+    signal.signal(signal.SIGTERM, stop)
+    signal.signal(signal.SIGINT, stop)
+    previous = {}
+    last_maintenance = 0
+    while RUNNING:
+        try:
+            current = port_records()
+            for port, record in current.items():
+                signature = (record["device"], record["connected"])
+                if port not in previous:
+                    event(
+                        port,
+                        record,
+                        "connected" if record["connected"] else "disconnected",
+                    )
+                elif previous[port] != signature:
+                    event(
+                        port,
+                        record,
+                        "connected" if record["connected"] else "disconnected",
+                    )
+                previous[port] = signature
+            if time.time() - last_maintenance >= 300:
+                maintain()
+                last_maintenance = time.time()
+        except Exception as exc:
+            subprocess.run(
+                ("logger", "-p", "daemon.err", "-t", "consolepi-log", str(exc)),
+                check=False,
+            )
+        time.sleep(2)
+
+
+def status():
+    config = settings()
+    files = transcript_files()
+    print(
+        json.dumps(
+            {
+                "enabled": config["TRANSCRIPT_MODE"] != "events",
+                "mode": config["TRANSCRIPT_MODE"],
+                "max_total_mb": int(config["TRANSCRIPT_MAX_TOTAL_MB"]),
+                "max_session_mb": int(config["TRANSCRIPT_MAX_SESSION_MB"]),
+                "min_free_mb": int(config["TRANSCRIPT_MIN_FREE_MB"]),
+                "retention_days": int(config["TRANSCRIPT_RETENTION_DAYS"]),
+                "usage_bytes": usage_bytes(),
+                "free_bytes": free_bytes(),
+                "files": len(files),
+                "event_log_exists": EVENT_LOG.exists(),
+            }
+        )
+    )
+
+
+if __name__ == "__main__":
+    action = sys.argv[1] if len(sys.argv) == 2 else ""
+    if action == "--monitor":
+        monitor()
+    elif action == "--once":
+        maintain()
+    elif action == "--can-record":
+        raise SystemExit(0 if can_record() else 1)
+    elif action == "--status":
+        status()
+    else:
+        print("Použití: consolepi-log-maintain --monitor|--once|--can-record|--status", file=sys.stderr)
+        raise SystemExit(2)

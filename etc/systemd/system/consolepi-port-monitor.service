@@ -1,0 +1,16 @@
+[Unit]
+Description=ConsolePi USB port event monitor and log maintenance
+After=local-fs.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/sbin/consolepi-log-maintain --monitor
+Restart=always
+RestartSec=3
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ReadWritePaths=/var/log/consolepi
+
+[Install]
+WantedBy=multi-user.target

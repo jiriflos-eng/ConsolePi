@@ -1,0 +1,44 @@
+#!/bin/sh
+set -u
+
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+export PATH
+
+printf '%s\n' '== OS =='
+uname -a
+cat /etc/os-release 2>/dev/null || true
+
+printf '\n%s\n' '== SSH syntax/listeners =='
+sshd -t && printf '%s\n' 'sshd syntax: OK' || printf '%s\n' 'sshd syntax: CHYBA'
+ss -lntp 2>/dev/null | awk 'NR == 1 || /:(22|2201|2202|2203|2204)[[:space:]]/'
+
+printf '\n%s\n' '== Serial devices =='
+ls -l /dev/serial/by-id /dev/consolepi 2>/dev/null || true
+
+printf '\n%s\n' '== Configured mapping =='
+awk -F '|' '
+    /^[[:space:]]*#/ || /^[[:space:]]*$/ { next }
+    {
+        state = (system("test -e \"" $3 "\"") == 0) ? "OK" : "MISSING"
+        printf "%s %-16s %-7s %s\n", $1, $2, state, $3
+    }
+' /etc/consolepi/ports.conf 2>/dev/null || true
+
+printf '\n%s\n' '== Authentication mode =='
+/usr/local/sbin/consolepi-control auth status 2>/dev/null || true
+ls -l /etc/consolepi/auth.conf /etc/consolepi/pam_radius_auth.conf \
+    /etc/pam.d/consolepi-radius 2>/dev/null || true
+
+printf '\n%s\n' '== Services =='
+systemctl --no-pager --full status ssh nftables consolepi-web \
+    consolepi-port-monitor 2>/dev/null || true
+
+printf '\n%s\n' '== Console logging =='
+/usr/local/sbin/consolepi-control logs status 2>/dev/null || true
+tail -n 8 /var/log/consolepi/ports.log 2>/dev/null || true
+
+printf '\n%s\n' '== nftables syntax =='
+nft -c -f /etc/nftables.conf && printf '%s\n' 'nftables syntax: OK' || printf '%s\n' 'nftables syntax: CHYBA'
+
+printf '\n%s\n' '== Recent audit =='
+journalctl --no-pager -t consolepi -n 30 2>/dev/null || true

@@ -1,0 +1,10 @@
+[Unit]
+Description=ConsolePi controlled package upgrade
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/consolepi-update-check --upgrade
+Nice=10
+IOSchedulingClass=idle

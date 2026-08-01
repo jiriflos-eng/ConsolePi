@@ -1,0 +1,398 @@
+{% extends "base.html" %}
+{% block title %}Systém · ConsolePi{% endblock %}
+{% block content %}
+{% set active_page = "system" %}
+{% include "_navigation.html" %}
+<style>
+  .system-details { grid-template-columns:minmax(0,1.12fr) minmax(520px,.88fr); }
+  .system-card .service-list > div { grid-template-columns:12px minmax(220px,1fr) 40px 94px; gap:12px; }
+  .service-list strong { white-space:nowrap; }
+  .service-actions { display:flex; justify-self:center; align-items:center; justify-content:center; width:40px; min-height:30px; }
+  .service-state { justify-self:end; padding:5px 10px; border-radius:999px; font-weight:700; line-height:1.25; }
+  .service-state.up { background:var(--accent-soft); color:var(--accent); }
+  .service-state.down { background:var(--danger-soft); color:var(--danger); }
+  @media (max-width:900px) {
+    .system-details { grid-template-columns:1fr; }
+  }
+  @media (max-width:560px) {
+    .system-card .service-list > div { grid-template-columns:12px minmax(0,1fr) 40px; }
+    .service-list strong { white-space:normal; }
+    .service-state { grid-column:2 / -1; justify-self:start; }
+  }
+</style>
+
+{% for category, message in get_flashed_messages(with_categories=true) %}
+  <div class="notice {{ category }}">{{ message }}</div>
+{% endfor %}
+
+<nav class="system-subnav" aria-label="Podnabídka systému">
+  <a data-system-tab="overview" class="{{ 'active' if system_section == 'overview' }}" href="{{ url_for('system_page') }}">Přehled</a>
+  <a data-system-tab="device" class="{{ 'active' if system_section == 'device' }}" href="{{ url_for('system_page', section='device') }}">Zařízení</a>
+  <a data-system-tab="security" class="{{ 'active' if system_section == 'security' }}" href="{{ url_for('system_page', section='security') }}">Zabezpečení</a>
+  <a data-system-tab="logs" class="{{ 'active' if system_section == 'logs' }}" href="{{ url_for('system_page', section='logs') }}">Logy</a>
+  <a data-system-tab="backup" class="{{ 'active' if system_section == 'backup' }}" href="{{ url_for('system_page', section='backup') }}">Záloha a obnova</a>
+  <a data-system-tab="maintenance" class="{{ 'active' if system_section == 'maintenance' }}" href="{{ url_for('system_page', section='maintenance') }}">Údržba</a>
+</nav>
+
+<div class="system-section" data-system-section="overview" {% if system_section != "overview" %}hidden{% endif %}>
+<section class="system-intro">
+  <div>
+    <h1><span class="heading-illustration system" aria-hidden="true"></span>Zdraví Raspberry Pi</h1>
+    <p class="section-lead">Živé systémové hodnoty se automaticky obnovují každých 5 sekund.</p>
+  </div>
+  <span class="badge ready system-overall"><i></i>Systém v provozu</span>
+</section>
+
+<div class="metric-grid">
+  <article class="metric-card">
+    <div class="metric-heading"><small>Využití CPU</small><strong data-system="cpu_percent">{{ system.cpu_percent if system.cpu_percent is not none else "–" }}{% if system.cpu_percent is not none %} %{% endif %}</strong></div>
+    <div class="meter"><span data-meter="cpu" style="width:{{ system.cpu_percent or 0 }}%"></span></div>
+    <p><span data-system="cpu_cores">{{ system.cpu_cores }}</span> jádra · load <span data-system="load">{{ system.load_1 }} / {{ system.load_5 }} / {{ system.load_15 }}</span></p>
+  </article>
+
+  <article class="metric-card">
+    <div class="metric-heading"><small>Teplota CPU</small><strong data-system="temperature">{{ system.temperature if system.temperature is not none else "–" }}{% if system.temperature is not none %} °C{% endif %}</strong></div>
+    <div class="meter temperature"><span data-meter="temperature" style="width:{{ system.temperature or 0 }}%"></span></div>
+    <p data-system="temperature_note">{{ "V normálním rozsahu" if system.temperature is none or system.temperature < 70 else "Zvýšená teplota" }}</p>
+  </article>
+
+  <article class="metric-card">
+    <div class="metric-heading"><small>Operační paměť</small><strong data-system="memory_percent">{{ system.memory_percent }} %</strong></div>
+    <div class="meter"><span data-meter="memory" style="width:{{ system.memory_percent }}%"></span></div>
+    <p><span data-system="memory_used">{{ system.memory_used }}</span> z <span data-system="memory_total">{{ system.memory_total }}</span></p>
+  </article>
+
+  <article class="metric-card">
+    <div class="metric-heading"><small>Systémový disk</small><strong data-system="disk_percent">{{ system.disk_percent }} %</strong></div>
+    <div class="meter"><span data-meter="disk" style="width:{{ system.disk_percent }}%"></span></div>
+    <p>Volné místo: <span data-system="disk_free">{{ system.disk_free }}</span> z <span data-system="disk_total">{{ system.disk_total }}</span></p>
+  </article>
+</div>
+
+<div class="system-details">
+  <section class="system-card">
+    <h2><span class="heading-illustration subheading device" aria-hidden="true"></span>Zařízení</h2>
+    <dl>
+      <div><dt>Model</dt><dd data-system="model">{{ system.model }}</dd></div>
+      <div><dt>Hostname</dt><dd data-system="hostname">{{ system.hostname }}</dd></div>
+      <div><dt>Operační systém</dt><dd data-system="os">{{ system.os }}</dd></div>
+      <div><dt>Kernel</dt><dd data-system="kernel">{{ system.kernel }}</dd></div>
+      <div><dt>Uptime</dt><dd data-system="uptime">{{ system.uptime }}</dd></div>
+    </dl>
+  </section>
+
+  <section class="system-card">
+    <h2><span class="heading-illustration subheading services" aria-hidden="true"></span>Služby</h2>
+    <div class="service-list">
+      {% for service, running in system.services.items() %}
+      <div data-service="{{ service }}"><span class="service-dot {{ 'up' if running else 'down' }}"></span><strong>{{ service }}</strong><span class="service-actions">{% if service == "nftables" %}<button class="service-log-button" type="button" data-firewall-drops title="Zobrazit posledních 100 zahazovaných paketů" aria-label="Zobrazit firewallový log">▤</button>{% elif service == "snmpd" %}<a class="service-log-button service-config-link" style="display:grid;place-items:center;text-decoration:none" href="{{ url_for('admin_dashboard', tab='network') }}#snmpv3" title="Otevřít nastavení SNMPv3" aria-label="Otevřít nastavení SNMPv3">▶</a>{% endif %}</span><small class="service-state {{ 'up' if running else 'down' }}">{{ "Aktivní" if running else "Neaktivní" }}</small></div>
+      {% endfor %}
+    </div>
+  </section>
+</div>
+
+<dialog class="firewall-drop-dialog" data-firewall-drop-dialog>
+  <div class="firewall-drop-dialog-head"><div><small>nftables · posledních 100 záznamů</small><h2>Zahazované pakety mimo lokální síť</h2></div><button class="dialog-close" type="button" data-firewall-drop-close aria-label="Zavřít">×</button></div>
+  <p class="firewall-drop-note">Záznamy jsou omezené na 10 za minutu (krátce až 20) a lokální ethernetová síť se nezapisuje.</p>
+  <div class="firewall-drop-list" data-firewall-drop-list aria-live="polite"></div>
+</dialog>
+
+<section class="system-card maintenance-card">
+  <div class="maintenance-heading">
+    <div><h2><span class="heading-illustration subheading auth" aria-hidden="true"></span>Bezpečnostní kontrola</h2><p>Automatická kontrola důležitých provozních a bezpečnostních nastavení.</p></div>
+    <strong class="audit-score">{{ audit.score }} / 100</strong>
+  </div>
+  <div class="audit-list">
+    {% for item in audit.findings %}
+    <div class="audit-item {{ item.level }}"><span></span><div><strong>{{ item.title }}</strong><small>{{ item.detail }}</small></div></div>
+    {% endfor %}
+  </div>
+</section>
+</div>
+
+<div class="system-section" data-system-section="device" {% if system_section != "device" %}hidden{% endif %}>
+<div class="maintenance-grid">
+  <section class="system-card maintenance-card">
+    <h2><span class="heading-illustration subheading identity" aria-hidden="true"></span>Identita zařízení</h2>
+    <p class="section-lead">Rozliší více jednotek ConsolePi po naklonování SD karty.</p>
+    <form action="{{ url_for('system_identity') }}" method="post" class="maintenance-form">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label>Hostname<input name="hostname" value="{{ identity.hostname }}" required maxlength="63"></label>
+      <label>Zobrazovaný název<input name="display_name" value="{{ identity.display_name }}" maxlength="80"></label>
+      <label>Umístění<input name="location" value="{{ identity.location }}" placeholder="Serverovna, rack R14" maxlength="120"></label>
+      <label>Popis<textarea name="description" maxlength="240">{{ identity.description }}</textarea></label>
+      <button type="submit">Uložit identitu</button>
+    </form>
+  </section>
+
+  <section class="system-card maintenance-card">
+    <div class="maintenance-heading">
+      <div><h2><span class="heading-illustration subheading time" aria-hidden="true"></span>Datum, čas a NTP</h2><p class="section-lead">{{ time_info.local_time }}</p></div>
+      <span class="badge {{ 'ready' if time_info.synchronized else 'offline' }}">{{ "Synchronizováno" if time_info.synchronized else "Nesynchronizováno" }}</span>
+    </div>
+    <form action="{{ url_for('system_time') }}" method="post" class="maintenance-form">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label>Časová zóna<input name="timezone" value="{{ time_info.timezone }}" required placeholder="Europe/Prague"></label>
+      <label>NTP servery<input name="servers" value="{{ time_info.servers|join(', ') }}" placeholder="ntp.firma.local, pool.ntp.org"></label>
+      <button type="submit">Uložit čas a NTP</button>
+    </form>
+  </section>
+</div>
+
+<section class="system-card maintenance-card storage-management-card">
+  <div class="maintenance-heading">
+    <div><h2><span class="heading-illustration subheading logs" aria-hidden="true"></span>Kapacita SD karty</h2><p class="section-lead">Kořenový oddíl: {{ (storage.partition_bytes / 1024 / 1024 / 1024)|round(1) if storage.partition_bytes else "–" }} GiB · fyzická karta: {{ (storage.disk_bytes / 1024 / 1024 / 1024)|round(1) if storage.disk_bytes else "–" }} GiB.</p></div>
+    <span class="badge {{ 'busy' if storage.eligible else 'ready' }}">{{ "Lze rozšířit" if storage.eligible else "Využito" }}</span>
+  </div>
+  {% if storage.eligible %}
+  <p class="section-lead">Na konci karty je ještě {{ (storage.free_bytes / 1024 / 1024 / 1024)|round(1) }} GiB nevyužité kapacity. Rozšíření zachová data i konfiguraci, ale během operace Raspberry Pi nevypínejte.</p>
+  <form action="{{ url_for('system_storage_expand') }}" method="post" class="inline-confirm" onsubmit="return confirm('Opravdu rozšířit datový oddíl na celou SD kartu?')">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label>Pro potvrzení napište ROZSIRIT<input name="confirmation" required pattern="ROZSIRIT" autocomplete="off" spellcheck="false"></label>
+    <button type="submit">Rozšířit úložiště</button>
+  </form>
+  {% else %}
+  <p class="section-lead">{{ storage.reason or "Kořenový oddíl již využívá dostupnou kapacitu karty." }}</p>
+  {% endif %}
+</section>
+</div>
+
+<div class="maintenance-grid">
+  <div class="system-section compact-section" data-system-section="security" {% if system_section != "security" %}hidden{% endif %}>
+  <section class="system-card maintenance-card">
+    <div class="maintenance-heading">
+      <div><h2><span class="heading-illustration subheading auth" aria-hidden="true"></span>HTTPS certifikát</h2><p class="section-lead">{{ tls.subject }}</p></div>
+      <span class="badge {{ 'ready' if tls.days_left|default(0) > 30 else 'offline' }}">{{ tls.days_left|default(0) }} dní</span>
+    </div>
+    <dl class="compact-facts">
+      <div><dt>Vydavatel</dt><dd>{{ tls.issuer }}</dd></div>
+      <div><dt>Platnost do</dt><dd>{{ tls.expires }}</dd></div>
+      <div><dt>Typ</dt><dd>{{ "Vlastní podepsaný" if tls.self_signed else "Podepsaný CA" }}</dd></div>
+    </dl>
+    <a class="detail-link" href="{{ url_for('system_tls_certificate') }}">Stáhnout veřejný certifikát</a>
+    <details class="maintenance-details"><summary>Nahrát firemní certifikát</summary>
+      <form action="{{ url_for('system_tls_install') }}" method="post" enctype="multipart/form-data" class="maintenance-form">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <label>Certifikát PEM<input type="file" name="certificate" accept=".pem,.crt" required></label>
+        <label>Privátní klíč PEM<input type="file" name="private_key" accept=".pem,.key" required></label>
+        <label>Pro potvrzení napište CERTIFIKAT<input name="confirmation" required pattern="CERTIFIKAT"></label>
+        <button type="submit">Nainstalovat certifikát</button>
+      </form>
+    </details>
+    <form action="{{ url_for('system_tls_generate') }}" method="post" class="inline-confirm" onsubmit="return confirm('Opravdu nahradit současný HTTPS certifikát?')">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label>Nový lokální certifikát<input name="confirmation" required pattern="NOVY" placeholder="Napište NOVY"></label>
+      <button class="ghost" type="submit">Vytvořit</button>
+    </form>
+  </section>
+  </div>
+
+</div>
+
+<div class="system-section" data-system-section="backup" {% if system_section != "backup" %}hidden{% endif %}>
+<section class="system-card maintenance-card">
+  <div class="maintenance-heading">
+    <div><h2><span class="heading-illustration subheading logs" aria-hidden="true"></span>Záloha, obnova a diagnostika</h2><p>Šifrovaná konfigurace a anonymizovaný diagnostický balíček.</p></div>
+  </div>
+  <div class="maintenance-columns">
+    <form action="{{ url_for('system_backup') }}" method="post" class="maintenance-form">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <h3>Stáhnout zálohu</h3>
+      <label>Heslo zálohy<input type="password" name="passphrase" minlength="12" required autocomplete="new-password"></label>
+      <label class="check-label"><input type="checkbox" name="include_secrets" value="yes"> Zahrnout hesla, RADIUS secrets, klíče a TLS privátní klíč</label>
+      <button type="submit">Stáhnout šifrovanou zálohu</button>
+    </form>
+    <form action="{{ url_for('system_restore') }}" method="post" enctype="multipart/form-data" class="maintenance-form" onsubmit="return confirm('Opravdu obnovit konfiguraci ze zálohy?')">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <h3>Obnovit konfiguraci</h3>
+      <label>Soubor .cpbackup<input type="file" name="backup" accept=".cpbackup" required></label>
+      <label>Heslo zálohy<input type="password" name="passphrase" required autocomplete="current-password"></label>
+      <label>Pro potvrzení napište OBNOVIT<input name="confirmation" required pattern="OBNOVIT"></label>
+      <button class="danger-button" type="submit">Obnovit ze zálohy</button>
+    </form>
+    <div class="maintenance-form">
+      <h3>Diagnostika</h3>
+      <p>Neobsahuje hesla, privátní klíče ani přepisy sériové komunikace.</p>
+      <form action="{{ url_for('system_diagnostic') }}" method="post">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <button type="submit">Stáhnout diagnostický balíček</button>
+      </form>
+    </div>
+  </div>
+</section>
+</div>
+
+<div class="system-section" data-system-section="maintenance" {% if system_section != "maintenance" %}hidden{% endif %}>
+<section class="system-card maintenance-card release-card">
+  <div class="maintenance-heading">
+    <div><h2><span class="heading-illustration subheading update" aria-hidden="true"></span>Aktualizace ConsolePi</h2><p>Nahrajte pouze balíček <code>.cpiupdate</code> vytvořený oficiálním podepisovacím klíčem ConsolePi. Před instalací je vždy ověřen podpis i kontrolní součet.</p></div>
+    <span class="badge {{ 'busy' if release_status.status in ['verifying', 'installing', 'rebooting'] else 'ready' }}">{{ {'idle': 'Připraveno', 'verifying': 'Ověřování', 'installing': 'Instalace', 'rebooting': 'Restart', 'completed': 'Dokončeno', 'failed': 'Chyba'}.get(release_status.status, 'Připraveno') }}</span>
+  </div>
+  {% if release_candidate %}
+  <div class="release-candidate">
+    <small>Ověřený balíček</small><strong>ConsolePi {{ release_candidate.version }}</strong>
+    <p>Současná verze: {{ release_candidate.current_version }} · vytvořeno {{ release_candidate.created_at }}</p>
+    <details open><summary>Novinky v aktualizaci</summary><pre>{{ release_candidate.notes }}</pre></details>
+    <form action="{{ url_for('system_release_install') }}" method="post" class="inline-confirm" onsubmit="return confirm('Opravdu nainstalovat aktualizaci? Všechny aktivní SSH a sériové relace budou ukončeny a ConsolePi se po dokončení restartuje.')">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label>Pro potvrzení napište INSTALOVAT<input name="confirmation" required pattern="INSTALOVAT" autocomplete="off" spellcheck="false"></label>
+      <button type="submit">Nainstalovat a restartovat</button>
+    </form>
+  </div>
+  {% else %}
+  <form action="{{ url_for('system_release_upload') }}" method="post" enctype="multipart/form-data" class="release-upload-form">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label>Aktualizační balíček <input type="file" name="package" accept=".cpiupdate,application/gzip" required></label>
+    <button type="submit">Ověřit balíček</button>
+  </form>
+  {% endif %}
+</section>
+<section class="system-card maintenance-card update-panel">
+  <div class="update-panel-head">
+    <div>
+      <small>Systémové aktualizace · Raspberry Pi OS</small>
+      <strong data-update="summary">
+        {% if updates.status == "current" %}Systém je aktuální
+        {% elif updates.status == "updates" %}Dostupné aktualizace: {{ updates.updates }}
+        {% elif updates.status == "checking" %}Probíhá kontrola…
+        {% elif updates.status == "upgrading" %}Probíhá instalace…
+        {% elif updates.status == "error" %}Kontrola skončila chybou
+        {% else %}Stav zatím není známý{% endif %}
+      </strong>
+    </div>
+    <span class="badge update-badge {% if updates.status == 'current' %}ready{% elif updates.status in ['checking', 'upgrading'] %}busy{% else %}offline{% endif %}" data-update="badge">
+      <i class="update-spinner" data-update="spinner" {% if updates.status not in ["checking", "upgrading"] %}hidden{% endif %}></i>
+      <span data-update="badge-text">{{ {"current": "Aktuální", "updates": "K dispozici", "checking": "Kontrola", "upgrading": "Instalace", "error": "Chyba", "unknown": "Neznámý"}[updates.status] }}</span>
+    </span>
+  </div>
+  <p>Aktualizace operačního systému, bezpečnostních oprav a nainstalovaných balíčků Raspberry Pi OS.</p>
+  <p>Poslední kontrola: <span data-update="checked">{{ updates.checked_human }}</span></p>
+  <p class="update-error" data-update="error" {% if not updates.error %}hidden{% endif %}>{{ updates.error }}</p>
+  <details data-update="packages-wrap" {% if not updates.packages %}hidden{% endif %}><summary>Zobrazit balíčky</summary><code data-update="packages">{{ updates.packages|join(", ") }}</code></details>
+  <div class="notice error" data-update="reboot" {% if not updates.reboot_required %}hidden{% endif %}>Po aktualizaci je vyžadován restart systému.</div>
+  <div class="update-actions">
+    <form action="{{ url_for('system_updates_check') }}" method="post">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <button class="ghost update-check-button" data-update="check-button" type="submit" {% if updates.status in ["checking", "upgrading"] %}disabled{% endif %}>Zkontrolovat nyní</button>
+    </form>
+    <form action="{{ url_for('system_updates_upgrade') }}" method="post" class="update-upgrade-form" data-update="upgrade-form" {% if updates.updates|int == 0 or updates.status in ["checking", "upgrading"] %}hidden{% endif %} onsubmit="return confirm('Opravdu nainstalovat dostupné systémové aktualizace? Během instalace nevypínejte Raspberry Pi.')">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label>Pro potvrzení napište AKTUALIZOVAT<input name="confirmation" required pattern="AKTUALIZOVAT" autocomplete="off" spellcheck="false"></label>
+      <button type="submit">Nainstalovat systémové aktualizace</button>
+    </form>
+  </div>
+</section>
+<section class="system-card maintenance-card clone-card">
+  <div>
+    <h2><span class="heading-illustration subheading auth" aria-hidden="true"></span>Regenerace SSH a HTTPS identity</h2>
+    <p>Vytvoří nové SSH hostitelské klíče a HTTPS certifikát. Běžné uložení názvu, hostname nebo umístění výše tuto akci nespouští, aby nedošlo k nečekanému zneplatnění uložených SSH fingerprintů a certifikátů.</p>
+  </div>
+  <form action="{{ url_for('system_clone_rekey') }}" method="post" class="inline-confirm" onsubmit="return confirm('Opravdu změnit identitu tohoto ConsolePi? Uložené SSH fingerprinty přestanou platit.')">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label>Pro potvrzení napište KLONOVAT<input name="confirmation" required pattern="KLONOVAT"></label>
+    <button class="danger-button" type="submit">Regenerovat SSH a HTTPS identitu</button>
+  </form>
+</section>
+</div>
+
+<div class="system-section" data-system-section="security" {% if system_section != "security" %}hidden{% endif %}>
+<section class="system-card password-card">
+  <div>
+    <h2><span class="heading-illustration subheading auth" aria-hidden="true"></span>Heslo webové administrace</h2>
+    <p>Změní přihlašovací heslo pouze pro HTTPS web ConsolePi. SSH hesla ani RADIUS tím nejsou ovlivněny.</p>
+  </div>
+  <form action="{{ url_for('system_web_password') }}" method="post" class="password-form" autocomplete="off">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label>Současné heslo<input name="current_password" type="password" required autocomplete="current-password"></label>
+    <label>Nové heslo<input name="new_password" type="password" minlength="10" maxlength="128" required autocomplete="new-password"></label>
+    <label>Nové heslo znovu<input name="new_password_confirmation" type="password" minlength="10" maxlength="128" required autocomplete="new-password"></label>
+    <button type="submit">Změnit webové heslo</button>
+  </form>
+</section>
+</div>
+
+<div class="system-section" data-system-section="logs" {% if system_section != "logs" %}hidden{% endif %}>
+<section class="system-card logging-card">
+  <div class="logging-heading">
+    <div>
+      <h2><span class="heading-illustration subheading logs" aria-hidden="true"></span>Logování konzolových portů</h2>
+      <p>Události připojení a odpojení USB kabelů se zapisují vždy. Úplný přepis sériové komunikace je volitelný.</p>
+    </div>
+    <div class="logging-heading-actions">
+      <span class="badge {{ 'ready' if logging.mode != 'events' else 'offline' }}">{{ {"events": "Pouze události", "output": "Výstup + redakce", "full": "Úplný přepis"}[logging.mode] }}</span>
+      <a class="detail-link" href="{{ url_for('system_logs_page') }}">Prohlížet logy →</a>
+    </div>
+  </div>
+  <div class="logging-stats">
+    <span><small>Uloženo</small><strong>{{ logging.usage }}</strong></span>
+    <span><small>Počet souborů</small><strong>{{ logging.files }}</strong></span>
+    <span><small>Volné místo</small><strong>{{ logging.free }}</strong></span>
+  </div>
+  <form action="{{ url_for('system_logging') }}" method="post" class="logging-form">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label class="logging-toggle">Obsah logu
+      <select name="mode">
+        <option value="events" {% if logging.mode == "events" %}selected{% endif %}>Pouze události – bez obsahu terminálu</option>
+        <option value="output" {% if logging.mode == "output" %}selected{% endif %}>Pouze výstup zařízení – aktivní redakce citlivých řádků</option>
+        <option value="full" {% if logging.mode == "full" %}selected{% endif %}>Úplný obousměrný přepis – rizikové</option>
+      </select>
+    </label>
+    <label>Celkový limit
+      <select name="max_total_mb">
+        {% for value in [64, 128, 256, 512, 1024, 2048] %}<option value="{{ value }}" {% if logging.max_total_mb == value %}selected{% endif %}>{{ value }} MB</option>{% endfor %}
+      </select>
+    </label>
+    <label>Limit jedné relace
+      <select name="max_session_mb">
+        {% for value in [5, 10, 25, 50, 100, 256] %}<option value="{{ value }}" {% if logging.max_session_mb == value %}selected{% endif %}>{{ value }} MB</option>{% endfor %}
+      </select>
+    </label>
+    <label>Minimální volné místo
+      <select name="min_free_mb">
+        {% for value in [128, 256, 512, 1024, 2048, 4096] %}<option value="{{ value }}" {% if logging.min_free_mb == value %}selected{% endif %}>{{ value }} MB</option>{% endfor %}
+      </select>
+    </label>
+    <label>Uchování
+      <select name="retention_days">
+        {% for value in [7, 14, 30, 60, 90, 180, 365] %}<option value="{{ value }}" {% if logging.retention_days == value %}selected{% endif %}>{{ value }} dní</option>{% endfor %}
+      </select>
+    </label>
+    <button type="submit">Uložit logování</button>
+  </form>
+  <form action="{{ url_for('system_logs_clear') }}" method="post" class="clear-logs-form" onsubmit="return confirm('Opravdu vymazat událostní logy a všechny dokončené přepisy konzolových relací?')">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label>Pro vymazání napište VYMAZAT<input name="confirmation" required pattern="VYMAZAT" autocomplete="off" spellcheck="false"></label>
+    <button class="danger-button" type="submit">Vymazat logy</button>
+  </form>
+</section>
+</div>
+
+<div class="system-section" data-system-section="maintenance" {% if system_section != "maintenance" %}hidden{% endif %}>
+<section class="power-card restart-category">
+  <h2><span class="heading-illustration subheading system" aria-hidden="true"></span>Restart</h2>
+  <div class="restart-method">
+    <div>
+      <h3>Restart systému</h3>
+      <p>Restart zachová veškerou konfiguraci, ale ukončí aktivní SSH a sériové relace.</p>
+    </div>
+    <form action="{{ url_for('system_power', action='reboot') }}" method="post" onsubmit="return confirm('Opravdu restartovat ConsolePi? Všechny aktivní SSH a sériové relace budou ukončeny.')">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <button class="restart-button" type="submit">↻ Restartovat</button>
+    </form>
+  </div>
+  <div class="restart-method factory-reset-method">
+    <div>
+      <h3>Obnovit tovární nastavení</h3>
+      <p>Nastaví DHCP, výchozí identitu ConsolePi, vymaže přiřazení USB kabelů, RADIUS a sériové předvolby. Poté se otevře průvodce prvního spuštění.</p>
+    </div>
+    <form action="{{ url_for('system_factory_reset') }}" method="post" class="factory-reset-form" onsubmit="return confirm('Opravdu obnovit tovární nastavení ConsolePi? Aktivní konfigurace a záznamy kabelů budou odstraněny.')">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label>Pro potvrzení napište RESET<input name="confirmation" required pattern="RESET" autocomplete="off" spellcheck="false"></label>
+      <button class="danger-button" type="submit">Obnovit tovární nastavení</button>
+    </form>
+  </div>
+</section>
+</div>
+
+<script src="{{ url_for('static', filename='system.js') }}"></script>
+{% endblock %}

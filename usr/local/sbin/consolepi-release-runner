@@ -1,0 +1,129 @@
+#!/usr/bin/python3
+"""Run a previously verified ConsolePi release outside the web process."""
+import json
+import os
+import subprocess
+import sys
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+
+STATE_DIR = Path("/var/lib/consolepi-web")
+STATE_FILE = STATE_DIR / "release-update-status.json"
+UPLOAD_DIR = STATE_DIR / "release-uploads"
+RELEASE = "/usr/local/sbin/consolepi-release"
+STALE_REBOOT_SECONDS = 45
+
+
+def write_state(status, message, **extra):
+    STATE_DIR.mkdir(parents=True, mode=0o700, exist_ok=True)
+    value = {
+        "status": status,
+        "message": message,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        **extra,
+    }
+    temporary = STATE_FILE.with_suffix(".new")
+    temporary.write_text(json.dumps(value, ensure_ascii=False) + "\n")
+    os.chmod(temporary, 0o600)
+    temporary.replace(STATE_FILE)
+
+
+def allowed_package(raw):
+    candidate = Path(raw).resolve()
+    uploads = UPLOAD_DIR.resolve()
+    if candidate.parent != uploads or candidate.suffix != ".cpiupdate" or not candidate.is_file():
+        raise ValueError("Aktualizační soubor nebyl nalezen.")
+    return candidate
+
+
+def status():
+    if STATE_FILE.exists():
+        print(STATE_FILE.read_text(), end="")
+    else:
+        print(json.dumps({"status": "idle", "message": "Žádná instalace neprobíhá."}))
+
+
+def run(package):
+    package = allowed_package(package)
+    write_state("verifying", "Ověřuji podpis aktualizačního balíčku…")
+    check = subprocess.run([RELEASE, "inspect", str(package)], text=True, capture_output=True, check=False)
+    if check.returncode:
+        write_state("failed", check.stderr.strip() or "Podpis balíčku nelze ověřit.")
+        return
+    try:
+        info = json.loads(check.stdout)
+    except json.JSONDecodeError:
+        write_state("failed", "Aktualizační balíček vrátil neplatný stav.")
+        return
+    write_state("installing", f"Instaluji ConsolePi {info['version']}…", version=info["version"])
+    try:
+        result = subprocess.run(
+            [RELEASE, "install", str(package)],
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=300,
+        )
+    except subprocess.TimeoutExpired:
+        write_state("failed", "Instalace překročila povolený čas. Zařízení nebylo automaticky restartováno.")
+        return
+    if result.returncode:
+        write_state("failed", result.stderr.strip() or result.stdout.strip() or "Instalace aktualizace selhala.")
+        return
+    package.unlink(missing_ok=True)
+    write_state("rebooting", "Instalace dokončena. ConsolePi se za okamžik restartuje.", version=info["version"])
+    time.sleep(5)
+    subprocess.run(["systemctl", "reboot"], check=False)
+
+
+def start(package):
+    current = json.loads(STATE_FILE.read_text()) if STATE_FILE.exists() else {"status": "idle"}
+    # A successful worker records "rebooting" immediately before it asks
+    # systemd for a reboot.  Once the machine is back, that old marker must
+    # not block the next update forever.  During the short reboot window it
+    # remains a lock; afterwards it is safely retired.
+    if current.get("status") == "rebooting":
+        try:
+            updated = datetime.fromisoformat(str(current.get("updated_at", "")).replace("Z", "+00:00"))
+            stale_reboot = (datetime.now(timezone.utc) - updated).total_seconds() > STALE_REBOOT_SECONDS
+        except (TypeError, ValueError):
+            stale_reboot = True
+        if stale_reboot:
+            write_state("idle", "Předchozí aktualizace byla dokončena.")
+            current = {"status": "idle"}
+    if current.get("status") in {"verifying", "installing", "rebooting"}:
+        raise ValueError("Instalace aktualizace již probíhá.")
+    package = allowed_package(package)
+    # The web process captures this command's output.  The detached worker must
+    # not inherit those pipe handles, otherwise the HTTP request waits for the
+    # whole installation and can eventually fail with a 500 timeout.
+    subprocess.Popen(
+        [sys.executable, __file__, "run", str(package)],
+        start_new_session=True,
+        close_fds=True,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    print(json.dumps({"started": True}))
+
+
+def main():
+    if os.geteuid() != 0:
+        raise ValueError("Aktualizační služba musí běžet jako root.")
+    if len(sys.argv) == 2 and sys.argv[1] == "status":
+        status()
+    elif len(sys.argv) == 3 and sys.argv[1] == "start":
+        start(sys.argv[2])
+    elif len(sys.argv) == 3 and sys.argv[1] == "run":
+        run(sys.argv[2])
+    else:
+        raise ValueError("Použití: consolepi-release-runner status | start SOUBOR")
+
+
+try:
+    main()
+except Exception as exc:
+    print(str(exc), file=sys.stderr)
+    raise SystemExit(1)

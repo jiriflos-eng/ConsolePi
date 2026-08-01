@@ -1,0 +1,9 @@
+{
+  "enabled": false,
+  "scheme": "http",
+  "host": "",
+  "port": 8080,
+  "username": "",
+  "password": "",
+  "no_proxy": "localhost,127.0.0.1,::1"
+}

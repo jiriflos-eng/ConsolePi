@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block title %}Autentizace · ConsolePi{% endblock %}
+{% block content %}
+{% set active_page = "authentication" %}
+{% include "_navigation.html" %}
+
+<style>
+  .auth-mode-status > span { background: #24a36b; box-shadow: 0 0 0 4px var(--accent-soft); }
+  .auth-choice-list { display: grid; gap: 10px; margin: 0 0 8px; padding: 0 0 18px; border: 0; border-bottom: 1px solid var(--line); }
+  .auth-choice-list legend { font-weight: 750; margin-bottom: 2px; }
+  .auth-choice { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px; align-items: center; padding: 14px 15px; border: 1px solid var(--line); border-radius: 11px; background: var(--surface); transition: border-color .15s ease, background .15s ease, box-shadow .15s ease; }
+  .auth-choice:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 5px 14px rgba(11,121,111,.1); }
+  .auth-choice label { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 10px; align-items: start; cursor: pointer; }
+  .auth-choice input { margin: 4px 0 0; }
+  .auth-choice strong, .auth-choice small { display: block; }
+  .auth-choice small { margin-top: 2px; color: var(--muted); font-weight: 500; }
+  .auth-choice a { color: var(--accent); font-size: 13px; font-weight: 700; text-decoration: none; white-space: nowrap; }
+  .auth-choice a:hover { text-decoration: underline; }
+  @media (max-width: 600px) { .auth-choice { grid-template-columns: 1fr; } .auth-choice a { margin-left: 30px; } }
+  .secondary-heading { align-items: center; }
+  .inline-toggle { margin-left: auto; font-size: 13px; font-weight: 650; color: var(--text); }
+  .inline-toggle input { margin-right: 6px; }
+  .secondary-radius-fields { grid-column: 1 / -1; }
+  .secondary-radius-fields.is-disabled { opacity: .42; filter: grayscale(.5); }
+</style>
+
+{% for category, message in get_flashed_messages(with_categories=true) %}
+  <div class="notice {{ category }}">{{ message }}</div>
+{% endfor %}
+
+<div class="auth-layout">
+  <section>
+    <h1><span class="heading-illustration auth" aria-hidden="true"></span>Ověření přístupu</h1>
+    <p class="section-lead">Nastavení platí společně pro konzolové porty 2201–2204. Administrativní SSH port 22 zůstává vždy lokální.</p>
+    <div class="auth-mode-status {{ auth.mode }}">
+      <span></span>
+      <div><small>Aktivní režim</small><strong>{{ {"local_key": "Uživatel + SSH klíč", "local_password": "Uživatel + heslo", "radius": "RADIUS"}[auth.mode] }}</strong></div>
+    </div>
+    {% if auth.mode == "radius" and auth.radius_last_check_ok %}
+    <div class="notice success"><strong>RADIUS komunikace ověřena</strong><br><small>Poslední kontrola při uložení konfigurace: {{ auth.radius_last_check.replace("T", " ") }}.</small></div>
+    {% endif %}
+    <div class="security-note auth-note">Všechny režimy používají technický SSH účet <code>console</code>. Vybraná metoda je vždy jediná požadovaná metoda – klíč a heslo se nikdy nevyžadují současně. Účet nemůže získat shell.</div>
+  </section>
+
+  <section class="serial-card auth-card">
+    <form action="{{ url_for('authentication_page') }}" method="post" class="auth-form" autocomplete="off">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <fieldset class="auth-choice-list">
+        <legend>Režim</legend>
+        <div class="auth-choice">
+          <label><input type="radio" name="mode" value="local_password" {% if auth.mode == "local_password" %}checked{% endif %}><span><strong>Lokální heslo pro účet <code>console</code></strong><small>SSH username je <code>console</code>; přístup chrání lokální heslo nastavené správcem.</small></span></label>
+          <a href="{{ url_for('help_page') }}#auth-local-password">Jak nastavit SecureCRT →</a>
+        </div>
+        <div class="auth-choice">
+          <label><input type="radio" name="mode" value="local_key" {% if auth.mode == "local_key" %}checked{% endif %}><span><strong>SSH klíč pro účet <code>console</code></strong><small>SSH username je <code>console</code>; přístup povolí vybraný privátní SSH klíč.</small></span></label>
+          <a href="{{ url_for('help_page') }}#auth-local-key">Jak nastavit SecureCRT →</a>
+        </div>
+        <div class="auth-choice">
+          <label><input type="radio" name="mode" value="radius" {% if auth.mode == "radius" %}checked{% endif %}><span><strong>RADIUS – osobní uživatel a heslo</strong><small>SSH username je <code>console</code>; potom zadáte vlastní RADIUS uživatelské jméno a heslo.</small></span></label>
+          <a href="{{ url_for('help_page') }}#auth-radius">Jak nastavit SecureCRT →</a>
+        </div>
+      </fieldset>
+
+      <div class="local-password-settings" id="local-password-settings" {% if auth.mode != "local_password" %}hidden{% endif %}>
+        <div class="radius-grid">
+          <h2>Heslo účtu console</h2>
+          <label class="full">Nové heslo
+            <input name="local_password" type="password" minlength="10" maxlength="128" placeholder="{{ 'Nastaveno – prázdné pole zachová stávající' if auth.local_password_set else 'Nejprve nastavte heslo' }}" autocomplete="new-password">
+          </label>
+          <label class="full">Nové heslo znovu
+            <input name="local_password_confirmation" type="password" minlength="10" maxlength="128" autocomplete="new-password">
+          </label>
+        </div>
+        <p class="hint">Heslo je uloženo pouze jako systémový hash. Při připojení použijte uživatele <code>console</code> a metodu Password.</p>
+      </div>
+
+      <div class="radius-settings" id="radius-settings" {% if auth.mode != "radius" %}hidden{% endif %}>
+        <div class="radius-grid">
+          <h2>Primární RADIUS</h2>
+          <label>Server
+            <input name="primary_host" value="{{ auth.primary_host }}" placeholder="10.1.1.10">
+          </label>
+          <label>UDP port
+            <input name="primary_port" type="number" min="1" max="65535" value="{{ auth.primary_port }}">
+          </label>
+          <label class="full">Shared secret
+            <input name="primary_secret" type="password" maxlength="128" placeholder="{{ 'Nastaveno – prázdné pole zachová stávající' if auth.primary_secret_set else 'Zadejte shared secret' }}" autocomplete="new-password">
+          </label>
+
+          <h2 class="secondary-heading">Sekundární RADIUS <label class="inline-toggle"><input id="secondary-enabled" name="secondary_enabled" type="checkbox" value="yes" {% if auth.secondary_host %}checked{% endif %}> Použít sekundární server</label></h2>
+          <div class="radius-grid secondary-radius-fields" id="secondary-radius-fields">
+          <label>Server
+            <input name="secondary_host" value="{{ auth.secondary_host }}" placeholder="10.1.1.11">
+          </label>
+          <label>UDP port
+            <input name="secondary_port" type="number" min="1" max="65535" value="{{ auth.secondary_port }}">
+          </label>
+          <label class="full">Shared secret
+            <input name="secondary_secret" type="password" maxlength="128" placeholder="{{ 'Nastaveno – prázdné pole zachová stávající' if auth.secondary_secret_set else 'Zadejte shared secret' }}" autocomplete="new-password">
+          </label>
+          </div>
+
+          <h2>Časování</h2>
+          <label>Timeout serveru
+            <select name="timeout">
+              {% for value in [3, 5, 10, 15] %}<option value="{{ value }}" {% if auth.timeout == value %}selected{% endif %}>{{ value }} s</option>{% endfor %}
+            </select>
+          </label>
+          <label>Počet pokusů
+            <select name="retries">
+              {% for value in [1, 2, 3] %}<option value="{{ value }}" {% if auth.retries == value %}selected{% endif %}>{{ value }}</option>{% endfor %}
+            </select>
+          </label>
+        </div>
+        <p class="hint">Při uložení v režimu RADIUS ConsolePi automaticky ověří každý nastavený server náhodným neplatným účtem. Očekávaný Access-Reject potvrzuje dostupnost i správný shared secret; při chybě se konfigurace neuloží.</p>
+      </div>
+      <button type="submit">Uložit autentizaci</button>
+    </form>
+    <div class="key-settings" id="key-settings" {% if auth.mode != "local_key" %}hidden{% endif %}>
+      {% include "_keys_manager.html" %}
+    </div>
+  </section>
+</div>
+<script src="{{ url_for('static', filename='authentication.js') }}"></script>
+{% endblock %}

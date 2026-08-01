@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}Restart · ConsolePi{% endblock %}
+{% block content %}
+<div class="system-action-page">
+  {% include "_brand.html" %}
+  <div class="system-action-icon">↻</div>
+  <h1>ConsolePi se restartuje</h1>
+  <p>Akce začne přibližně za {{ delay }} sekund. Všechny aktivní konzolové a SSH relace budou ukončeny.</p>
+  <p class="hint">Počkejte přibližně jednu minutu a potom znovu otevřete <a href="{{ url_for('login') }}">webovou administraci</a>.</p>
+</div>
+{% endblock %}

@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Přístupové klíče · ConsolePi{% endblock %}
+{% block content %}
+{% set active_page = "keys" %}
+{% include "_navigation.html" %}
+
+{% for category, message in get_flashed_messages(with_categories=true) %}
+  <div class="notice {{ category }}">{{ message }}</div>
+{% endfor %}
+
+<div class="keys-layout">
+  <section>
+    <h1>Oprávněné klíče</h1>
+    <p class="section-lead">Tyto klíče se mohou připojit jako uživatel <code>console</code> na konzolové porty v lokálním režimu.</p>
+    {% if auth.mode != "local_key" %}<div class="notice success">Aktivní je {{ "RADIUS" if auth.mode == "radius" else "lokální heslo" }}. Uložené klíče zůstávají zachované, ale konzolové porty je nyní nepřijímají.</div>{% endif %}
+    <div class="key-list">
+      {% for key in keys %}
+      <div class="key-row">
+        <div><strong>{{ key.comment }}</strong><code>{{ key.fingerprint }}</code></div>
+        <form action="{{ url_for('key_delete') }}" method="post" onsubmit="return confirm('{% if keys|length == 1 %}Opravdu odebrat poslední uložený přístupový klíč?{% else %}Opravdu odebrat tento přístupový klíč?{% endif %}')">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <input type="hidden" name="fingerprint" value="{{ key.fingerprint }}">
+          <button class="danger-button" type="submit" {% if keys|length == 1 and auth.mode == "local_key" %}disabled title="Nejprve přepněte autentizaci na heslo nebo RADIUS"{% endif %}>Odebrat</button>
+        </form>
+      </div>
+      {% else %}
+      <p>Nejsou nainstalovány žádné klíče.</p>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="key-create-card">
+    <h2>Vytvořit klíč pro SecureCRT</h2>
+    <ol class="compact-steps">
+      <li>Zadejte jméno správce nebo počítače.</li>
+      <li>Volitelně nastavte ochrannou frázi.</li>
+      <li>Po kliknutí se klíč automaticky nainstaluje a privátní soubor se jednou stáhne.</li>
+      <li>Stažený soubor vyberte v SecureCRT jako Identity File.</li>
+    </ol>
+    <form action="{{ url_for('key_create') }}" method="post" class="form-stack" data-no-page-loader>
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label>Název klíče<input name="label" maxlength="50" placeholder="Jan-Novak-notebook" required></label>
+      <label>Ochranná fráze <span class="optional">(volitelná)</span><input type="password" name="passphrase" minlength="8" autocomplete="new-password"></label>
+      <label>Ochranná fráze znovu<input type="password" name="passphrase_confirmation" minlength="8" autocomplete="new-password"></label>
+      <button type="submit">Vytvořit a stáhnout privátní klíč</button>
+    </form>
+    <p class="security-note"><strong>Soubor se nabídne jen jednou.</strong> ConsolePi si ponechá pouze veřejnou část. Při ztrátě vytvořte nový klíč a starý odeberte.</p>
+  </section>
+</div>
+{% endblock %}

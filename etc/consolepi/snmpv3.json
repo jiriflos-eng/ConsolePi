@@ -1,0 +1,6 @@
+{
+  "enabled": false,
+  "username": "",
+  "auth_protocol": "SHA-256",
+  "privacy_protocol": "AES"
+}

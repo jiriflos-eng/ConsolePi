@@ -1,0 +1,110 @@
+#!/usr/bin/python3
+import os
+import pwd
+import re
+import shutil
+import sys
+from pathlib import Path
+
+CONFIG = Path("/etc/consolepi/consolepi.conf")
+
+
+def setting(name, default):
+    for line in CONFIG.read_text().splitlines():
+        key, separator, value = line.partition("=")
+        if separator and key == name:
+            return int(value.strip())
+    return default
+
+
+if len(sys.argv) != 3 or sys.argv[1] not in {"output", "full"}:
+    raise SystemExit(
+        "Použití: consolepi-transcript-writer output|full CILOVY_SOUBOR"
+    )
+
+mode = sys.argv[1]
+target = Path(sys.argv[2])
+target.parent.mkdir(parents=True, exist_ok=True)
+console = pwd.getpwnam("console")
+os.chown(target.parent, console.pw_uid, console.pw_gid)
+os.chmod(target.parent, 0o700)
+max_bytes = setting("TRANSCRIPT_MAX_SESSION_MB", 25) * 1024 * 1024
+min_free = setting("TRANSCRIPT_MIN_FREE_MB", 512) * 1024 * 1024
+written = 0
+recording = True
+line_buffer = b""
+private_block = False
+sensitive = re.compile(
+    rb"(?i)(?:password|passwd|secret|community|key-string|private[-_ ]?key|"
+    rb"pre-shared[-_ ]?key|authentication[-_ ]?key|radius-server\s+key|"
+    rb"tacacs-server\s+key|authorization\s*:|bearer\s+|access[-_ ]?token)"
+)
+private_begin = re.compile(rb"(?i)-----BEGIN [^-]*(?:PRIVATE KEY|SECRET)[^-]*-----")
+private_end = re.compile(rb"(?i)-----END [^-]*(?:PRIVATE KEY|SECRET)[^-]*-----")
+redaction = b"[CITLIVY OBSAH ODSTRANEN]\n"
+
+
+def redact_output(block, final=False):
+    global line_buffer, private_block
+    if mode == "full":
+        return block
+    line_buffer += block
+    output = bytearray()
+    while b"\n" in line_buffer:
+        line, line_buffer = line_buffer.split(b"\n", 1)
+        line += b"\n"
+        if private_block:
+            if private_end.search(line):
+                private_block = False
+            continue
+        if private_begin.search(line):
+            private_block = True
+            output.extend(redaction)
+        elif sensitive.search(line):
+            output.extend(redaction)
+        else:
+            output.extend(line)
+    if len(line_buffer) > 65536:
+        if sensitive.search(line_buffer) or private_begin.search(line_buffer):
+            output.extend(redaction)
+        else:
+            output.extend(line_buffer)
+        line_buffer = b""
+    if final and line_buffer:
+        if sensitive.search(line_buffer) or private_begin.search(line_buffer):
+            output.extend(redaction)
+        elif not private_block:
+            output.extend(line_buffer)
+        line_buffer = b""
+    return bytes(output)
+
+with target.open("wb") as output:
+    os.chmod(target, 0o600)
+    os.chown(target, console.pw_uid, console.pw_gid)
+    while True:
+        block = sys.stdin.buffer.read(65536)
+        if not block:
+            break
+        block = redact_output(block)
+        if recording and block:
+            remaining = max_bytes - written
+            if remaining > 0 and shutil.disk_usage(target.parent).free >= min_free:
+                chunk = block[:remaining]
+                output.write(chunk)
+                output.flush()
+                written += len(chunk)
+            if written >= max_bytes or shutil.disk_usage(target.parent).free < min_free:
+                recording = False
+    tail = redact_output(b"", final=True)
+    if recording and tail:
+        remaining = max_bytes - written
+        if remaining > 0 and shutil.disk_usage(target.parent).free >= min_free:
+            output.write(tail[:remaining])
+            output.flush()
+            written += min(len(tail), remaining)
+
+if written:
+    completed = target.with_suffix(".log")
+    os.replace(target, completed)
+else:
+    target.unlink(missing_ok=True)

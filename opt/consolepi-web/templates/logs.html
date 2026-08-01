@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Logy · ConsolePi{% endblock %}
+{% block content %}
+{% set active_page = "system" %}
+{% include "_navigation.html" %}
+
+{% for category, message in get_flashed_messages(with_categories=true) %}
+  <div class="notice {{ category }}">{{ message }}</div>
+{% endfor %}
+
+<div class="logs-heading">
+  <div>
+    <h1><span class="heading-illustration logs" aria-hidden="true"></span>Prohlížeč logů</h1>
+    <p class="section-lead">Události USB kabelů a dokončené nebo právě probíhající přepisy sériových relací.</p>
+  </div>
+  <a class="detail-link" href="{{ url_for('system_page') }}">← Zpět do systému</a>
+</div>
+
+<div class="log-list">
+  {% for item in logs %}
+  <article class="log-row">
+    <div class="log-kind"><span class="service-dot {{ 'up' if item.active else 'down' }}"></span><strong>{{ item.type }}</strong><small>{{ "Aktivní záznam" if item.active else "Uzavřený soubor" }}</small></div>
+    <div><small>Port</small><strong>{{ item.port }}</strong></div>
+    <div><small>Velikost</small><strong>{{ item.size_human }}</strong></div>
+    <div><small>Změněno</small><strong>{{ item.modified_human }}</strong></div>
+    <a class="detail-link" href="{{ url_for('system_log_view', path=item.path) }}">Otevřít →</a>
+  </article>
+  {% else %}
+  <div class="empty-logs">
+    <strong>Zatím nejsou k dispozici žádné logy.</strong>
+    <p>Událostní log vznikne při spuštění monitoru nebo při změně stavu USB kabelu. Sériové přepisy se objeví po zapnutí úplného logování a ukončení první relace.</p>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

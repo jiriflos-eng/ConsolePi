@@ -1,0 +1,207 @@
+{% extends "base.html" %}
+{% block content %}
+{% set active_page = "network" if request.args.get("tab") == "network" else "overview" %}
+{% set show_health = true %}
+{% include "_navigation.html" %}
+
+{% for category, message in get_flashed_messages(with_categories=true) %}
+  <div class="notice {{ category }}">{{ message }}</div>
+{% endfor %}
+
+<section id="overview" class="panel active">
+  {% if storage.eligible %}
+  <aside class="storage-notice" role="status">
+    <div><strong>Na SD kartě je dostupné rozšíření systému</strong><span>Kořenový oddíl lze bezpečně zvětšit o {{ (storage.free_bytes / 1024 / 1024 / 1024)|round(1) }} GiB.</span></div>
+    <a class="detail-link" href="{{ url_for('system_page', section='device') }}">Otevřít kapacitu SD →</a>
+  </aside>
+  {% endif %}
+  <div class="stats">
+    <article><small>USB konzole</small><strong id="connected-count">{{ ports|selectattr("connected")|list|length }} připojené</strong><span id="offline-count">{{ ports|rejectattr("connected")|list|length }} volné SSH porty</span></article>
+    <article><small>Síť</small><strong>{{ network.mode|upper }}</strong><span>{{ network.address }}/{{ network.prefix }}</span></article>
+    <article><small>Administrace</small><strong>SSH :22</strong><span>management LAN</span></article>
+    <article><small>Autentizace konzolí</small><strong>{{ "RADIUS" if auth.mode == "radius" else "LOKÁLNÍ" }}</strong><span>{{ {"local_key": "Uživatel + SSH klíč", "local_password": "Uživatel + heslo", "radius": "RADIUS uživatel + heslo"}[auth.mode] }}</span></article>
+  </div>
+  <section class="unassigned-usb" data-unassigned-usb data-csrf="{{ csrf }}" {% if not unassigned_usb_cables %}hidden{% endif %}>
+    <div class="unassigned-usb-head">
+      <div><small>USB detekce</small><strong>Nalezené nepřiřazené kabely</strong></div>
+      <span class="badge offline">Vyžadují přiřazení</span>
+    </div>
+    <p>Tyto adaptéry jsou fyzicky připojené, ale po továrním resetu ještě nemají zvolený SSH port. Vyberte port jednou; dále se kabel pozná podle svého stabilního sériového ID i po prohození USB konektorů.</p>
+    <div class="unassigned-usb-list" data-role="unassigned-usb-list">
+      {% for cable in unassigned_usb_cables %}
+      <form method="post" action="{{ url_for('port_assign') }}" class="unassigned-usb-row">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <input type="hidden" name="device" value="{{ cable.stable_id }}">
+        <div><strong>{{ cable.hardware_description }}</strong><small><code>{{ cable.stable_id }}</code></small></div>
+        <label>SSH port
+          <select name="port">
+            {% for row in ports if '/unassigned-' in row.device %}<option value="{{ row.port }}">{{ row.port }} · {{ row.name }}</option>{% endfor %}
+          </select>
+        </label>
+        <button type="submit">Přiřadit kabel</button>
+      </form>
+      {% endfor %}
+    </div>
+  </section>
+  <h2 class="serial-consoles-heading"><span class="heading-illustration console" aria-hidden="true"></span>Sériové konzole</h2>
+  <div class="cable-list">
+    {% for row in ports %}
+    {% set assigned = "/unassigned-" not in row.device %}
+    <div class="cable-row{% if not row.connected %} is-offline{% endif %}" data-console-port="{{ row.port }}" data-assigned="{{ 'yes' if assigned else 'no' }}">
+      <div class="cable-name"><span class="cable-icon cable-visual{% if not row.connected %} disconnected{% endif %}" data-role="cable-icon" aria-hidden="true">{{ "" if row.connected else "⊘" }}</span><div><strong data-role="console-name">{{ row.display_name }}</strong><small data-role="device-description" title="{{ row.device }}">{% if row.connected %}{{ row.hardware_description }}{% elif assigned %}Odpojený · {{ row.hardware_description }}{% else %}{{ row.hardware_description }}{% endif %}</small></div></div>
+      <div class="connection-info">
+        <code>{{ row.command }}</code>
+        <small><strong>Linka:</strong> <span data-role="serial-summary">{{ row.serial_summary }}</span></small>
+        <small><strong>SecureCRT:</strong> SSH2 · Host {{ network.address }} · Port {{ row.port }} · User console · {{ {"local_key": "PublicKey", "local_password": "Password", "radius": "Keyboard Interactive"}[auth.mode] }} · Xterm/VT100</small>
+        <a class="detail-link" href="{{ url_for('serial_page', port=row.port) }}">Detail a nastavení portu →</a>
+      </div>
+      {% if row.busy %}<span class="badge busy" data-role="status">Obsazen</span>{% elif row.connected %}<span class="badge ready" data-role="status">Připraven</span>{% elif assigned %}<span class="badge offline" data-role="status">Odpojený</span>{% else %}<span class="badge offline" data-role="status">Nepřiřazeno</span>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</section>
+
+<section id="network" class="panel">
+  <h2><span class="heading-illustration network" aria-hidden="true"></span>Nastavení Ethernetu</h2>
+  <section class="interface-status network-status-card">
+    <div class="interface-status-head">
+      <div><small>Aktuální stav rozhraní</small><strong>{{ network.device }}</strong></div>
+      <span class="badge {{ 'ready' if network.connected else 'offline' }}"><i></i>{{ "Připojeno" if network.connected else "Odpojeno" }}</span>
+    </div>
+    <div class="interface-values">
+      <div><small>Režim IPv4</small><strong>{{ network.mode|upper }}</strong></div>
+      <div><small>Získaná adresa</small><code>{{ network.address ~ "/" ~ network.prefix if network.address else "Nepřidělena" }}</code></div>
+      <div><small>Výchozí brána</small><code>{{ network.gateway or "Neuvedena" }}</code></div>
+      <div><small>DNS server</small><code>{{ network.dns or "Neuveden" }}</code></div>
+      <div><small>MAC adresa</small><code>{{ network.mac or "Nedostupná" }}</code></div>
+      <div><small>MTU</small><code>{{ network.mtu or "Nedostupné" }}</code></div>
+      <div class="interface-profile"><small>NetworkManager profil</small><code>{{ network.connection or "Žádný" }}</code></div>
+    </div>
+  </section>
+  <form action="{{ url_for('network_apply') }}" method="post" class="network-form network-config-card">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <div class="mode">
+      <label><input type="radio" name="mode" value="dhcp" {% if network.mode == "dhcp" %}checked{% endif %}> DHCP</label>
+      <label><input type="radio" name="mode" value="static" {% if network.mode == "static" %}checked{% endif %}> Static</label>
+    </div>
+    <div class="fields" id="static-fields">
+      <label>IP adresa<input name="address" value="{{ network.address }}" inputmode="decimal" required></label>
+      <label>Prefix<input name="prefix" type="number" min="1" max="32" value="{{ network.prefix }}" required></label>
+      <label>Výchozí brána<input name="gateway" value="{{ network.gateway }}" inputmode="decimal" required></label>
+      <label>DNS<input name="dns" value="{{ network.dns or network.gateway }}" inputmode="decimal" required></label>
+    </div>
+    <p class="hint">Po změně se firewall automaticky omezí na novou lokální síť. Pokud konfiguraci do dvou minut nepotvrdíte, obnoví se původní síť i firewall.</p>
+    <button type="submit">Zkontrolovat a použít</button>
+  </form>
+  <section class="interface-status access-sources-card">
+    <div class="interface-status-head">
+      <div><small>Firewall ConsolePi</small><strong>Povolené zdroje přístupu</strong></div>
+      {% if access_sources.open_access %}
+      <span class="badge offline">Otevřeno všem</span>
+      {% else %}
+      <span class="badge ready">{{ 1 + access_sources.sources|length }} povoleno</span>
+      {% endif %}
+    </div>
+    <p class="hint">HTTPS, administrativní SSH a konzolové porty jsou přístupné pouze z uvedených IP adres nebo sítí. Lokální ethernetová síť se upraví automaticky při změně IP konfigurace; ostatní zdroje jsou blokovány.</p>
+    <div class="access-source-grid" role="table" aria-label="Povolené zdroje přístupu">
+      <div class="access-source-row access-source-head" role="row"><span>Popis</span><span>IP adresa nebo síť</span><span>Stav</span><span>Akce</span></div>
+      <div class="access-source-row access-source-local" role="row">
+        <div><strong>Lokální Ethernet</strong><small>Automaticky podle aktuální sítě</small></div>
+        <code>{{ access_sources.local_network }}</code>
+        <span class="badge ready">Povolen</span>
+        <span class="access-source-fixed">Nelze změnit</span>
+      </div>
+      {% for source in access_sources.sources %}
+      <form action="{{ url_for('network_access_source_update') }}" method="post" class="access-source-row{% if source.network == '0.0.0.0/0' %} access-source-open{% endif %}" role="row">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <input type="hidden" name="source_id" value="{{ source.id }}">
+        <label><span class="visually-hidden">Popis zdroje</span><input name="label" value="{{ source.label }}" maxlength="80" required></label>
+        <label><span class="visually-hidden">IP adresa nebo síť</span><input name="network" value="{{ source.network }}" inputmode="decimal" required></label>
+        {% if source.network == '0.0.0.0/0' %}<span class="badge offline">Všichni</span>{% else %}<span class="badge ready">Povolen</span>{% endif %}
+        <div class="access-source-actions">
+          <label class="access-confirm" data-access-confirm{% if source.network != '0.0.0.0/0' %} hidden{% endif %}><span>Potvrzení pro 0.0.0.0/0</span><input name="confirmation" placeholder="POVOLIT VŠEM"{% if source.network != '0.0.0.0/0' %} disabled{% endif %}></label>
+          <button type="submit">Uložit</button>
+          <button class="danger-button access-delete" type="submit" name="operation" value="delete" onclick="return confirm('Odebrat tento povolený zdroj?')">Odebrat</button>
+        </div>
+      </form>
+      {% endfor %}
+    </div>
+    <form action="{{ url_for('network_access_source_add') }}" method="post" class="access-source-add">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label>Popis<input name="label" maxlength="80" placeholder="Např. Správní VPN" required></label>
+      <label>IP adresa nebo síť<input name="network" inputmode="decimal" placeholder="10.247.227.8 nebo 10.247.0.0/16" required></label>
+      <label data-access-confirm hidden>Potvrzení pro 0.0.0.0/0<input name="confirmation" placeholder="POVOLIT VŠEM" disabled></label>
+      <button type="submit">Povolit zdroj</button>
+    </form>
+    <p class="access-sources-warning">Zadání <code>0.0.0.0/0</code> otevře přístup ze všech IPv4 adres. ConsolePi jej přijme pouze po přesném potvrzení <strong>POVOLIT VŠEM</strong>.</p>
+  </section>
+  <section class="interface-status proxy-card">
+    <div class="interface-status-head">
+      <div><small>Přístup k internetu</small><strong>HTTP/HTTPS proxy</strong></div>
+      <span class="badge {{ 'ready' if proxy.enabled else 'offline' }}">{{ "Zapnuta" if proxy.enabled else "Vypnuta" }}</span>
+    </div>
+    <form action="{{ url_for('network_proxy') }}" method="post" class="proxy-form">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label class="proxy-toggle"><input type="checkbox" name="enabled" value="yes" {% if proxy.enabled %}checked{% endif %}> Používat proxy server pro systémové aktualizace</label>
+      <div class="proxy-fields" data-proxy-fields>
+        <label>Protokol
+          <select name="scheme">
+            <option value="http" {% if proxy.scheme == "http" %}selected{% endif %}>HTTP</option>
+            <option value="https" {% if proxy.scheme == "https" %}selected{% endif %}>HTTPS</option>
+          </select>
+        </label>
+        <label>Proxy server<input name="host" value="{{ proxy.host }}" placeholder="proxy.example.local"></label>
+        <label>Port<input name="port" type="number" min="1" max="65535" value="{{ proxy.port }}"></label>
+        <label>Uživatel <span class="optional">(volitelný)</span><input name="username" value="{{ proxy.username }}" autocomplete="username"></label>
+        <label>Heslo <span class="optional">(volitelné)</span><input name="password" type="password" autocomplete="new-password" placeholder="{{ 'Uloženo – ponechte prázdné' if proxy.password_set else '' }}"></label>
+        <label class="proxy-full">Nepoužívat proxy pro<input name="no_proxy" value="{{ proxy.no_proxy }}" placeholder="localhost,127.0.0.1,.firma.local"></label>
+        {% if proxy.password_set %}<label class="proxy-keep proxy-full"><input type="checkbox" name="keep_password" value="yes" checked> Ponechat současné uložené heslo, pokud je pole hesla prázdné</label>{% endif %}
+      </div>
+      <p class="hint">Proxy se použije pro kontrolu a instalaci balíčků přes APT. Přihlašovací heslo se ukládá pouze pro uživatele root a ve webu se nikdy zpětně nezobrazuje.</p>
+      <button type="submit">Uložit proxy</button>
+    </form>
+  </section>
+  <section class="interface-status discovery-card">
+    <div class="interface-status-head">
+      <div><small>Fyzický síťový soused</small><strong>CDP / LLDP detekce</strong></div>
+      <span class="badge {{ 'ready' if discovery.active else 'offline' }}">{{ "Aktivní" if discovery.active else "Vypnutá" }}</span>
+    </div>
+    <form action="{{ url_for('network_discovery') }}" method="post" class="discovery-form">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label class="proxy-toggle"><input type="checkbox" name="lldp" value="yes" {% if discovery.lldp %}checked{% endif %}> LLDP – standardní detekce zařízení</label>
+      <label class="proxy-toggle"><input type="checkbox" name="cdp" value="yes" {% if discovery.cdp %}checked{% endif %}> CDP – Cisco Catalyst a další Cisco zařízení</label>
+      <p class="hint">Detekce probíhá pouze na ethernetovém rozhraní ConsolePi. Zařízení odesílá vlastní základní identitu, ale nezveřejňuje inventární údaje.</p>
+      <button type="submit">Uložit CDP / LLDP</button>
+    </form>
+    {% if discovery.neighbors %}
+    <div class="discovery-neighbors">
+      {% for neighbor in discovery.neighbors %}
+      <div><small>{{ neighbor.protocol or "LLDP/CDP" }} · {{ neighbor.interface }}</small><strong>{{ neighbor.name or "Neznámé zařízení" }}</strong><span>{{ neighbor.platform or "Platforma neuvedena" }} · port {{ neighbor.port or "neuveden" }}{% if neighbor.address %} · {{ neighbor.address }}{% endif %}</span></div>
+      {% endfor %}
+    </div>
+    {% elif discovery.active %}
+    <p class="hint">Zatím nebyla přijata žádná CDP ani LLDP reklama. Ověřte na switchi aktivaci `cdp run` nebo `lldp run` pro připojený port.</p>
+    {% endif %}
+    {% if discovery.error %}<p class="update-error">{{ discovery.error }}</p>{% endif %}
+  </section>
+  <section id="snmpv3" class="interface-status discovery-card snmp-card">
+    <div class="interface-status-head">
+      <div><small>Dohled zařízení</small><strong>SNMPv3</strong></div>
+      <span class="badge {{ 'ready' if snmp.active else 'offline' }}">{{ "Aktivní" if snmp.active else "Vypnutá" }}</span>
+    </div>
+    <form action="{{ url_for('network_snmp') }}" method="post" class="discovery-form">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label class="proxy-toggle"><input type="checkbox" name="enabled" value="yes" {% if snmp.enabled %}checked{% endif %}> Zapnout zabezpečený SNMPv3 režim authPriv</label>
+      <div class="fields snmp-fields">
+        <label>Uživatel SNMPv3<input name="username" value="{{ snmp.username }}" autocomplete="off" placeholder="např. zabbix-consolepi"></label>
+        <label>Autentizační heslo (SHA-256)<input name="auth_password" type="password" autocomplete="new-password" placeholder="min. 8 znaků"></label>
+        <label>Šifrovací heslo (AES)<input name="privacy_password" type="password" autocomplete="new-password" placeholder="min. 8 znaků"></label>
+      </div>
+      <p class="hint">SNMPv1 a SNMPv2c nejsou podporované. UDP port 161 je při aktivaci automaticky povolen pouze z položek v seznamu <strong>Povolené zdroje přístupu</strong>; hesla se po uložení nezobrazují.</p>
+      <div class="snmp-actions"><button type="submit">{{ "Uložit SNMPv3" if snmp.enabled else "Aktivovat SNMPv3" }}</button>{% if snmp.mib_available %}<a class="detail-link" href="{{ url_for('download_snmp_mib') }}">Stáhnout CONSOLEPI-MIB.txt →</a>{% endif %}</div>
+    </form>
+    {% if snmp.enabled %}<p class="hint">UDP port {{ snmp.port }} · MIB větev <code>{{ snmp.oid_root }}</code> · {{ "služba běží" if snmp.active else "služba se nespustila" }}</p>{% endif %}
+  </section>
+</section>
+<script src="{{ url_for('static', filename='consolepi.js') }}"></script>
+{% endblock %}

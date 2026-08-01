@@ -1,0 +1,136 @@
+#!/bin/sh
+set -u
+
+PATH=/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin
+export PATH
+
+is_remote() {
+    [ -n "${SSH_CONNECTION:-}" ]
+}
+
+pause() {
+    printf '\nStisknete Enter pro navrat do menu...'
+    IFS= read -r _
+}
+
+show_network() {
+    printf '\nAktualni nastaveni Ethernetu\n'
+    nmcli -f GENERAL.DEVICE,GENERAL.STATE,GENERAL.CONNECTION,IP4.ADDRESS,IP4.GATEWAY,IP4.DNS device show eth0 2>/dev/null ||
+        printf '%s\n' 'Stav rozhrani nelze nacist.'
+}
+
+confirm_pending() {
+    if sudo /usr/local/sbin/consolepi-control network pending >/dev/null 2>&1; then
+        printf '\n\033[33mExistuje nepotvrzena zmena site.\033[0m\n'
+        printf 'Je nove pripojeni funkcni a chcete nastaveni potvrdit? [a/N]: '
+        IFS= read -r answer
+        case "$answer" in
+            a|A|ano|ANO)
+                sudo /usr/local/sbin/consolepi-control network confirm-pending &&
+                    printf '%s\n' 'Sitove nastaveni bylo potvrzeno.'
+                ;;
+            *)
+                printf '%s\n' 'Nastaveni zatim nebylo potvrzeno; pojistka obnovi puvodni sit.'
+                ;;
+        esac
+    fi
+}
+
+configure_network() {
+    show_network
+    printf '\nVyberte rezim: [1] DHCP  [2] Staticka adresa  [0] Zpet\nVolba: '
+    IFS= read -r mode
+    case "$mode" in
+        1)
+            printf 'Pouzit DHCP? [a/N]: '
+            IFS= read -r answer
+            case "$answer" in
+                a|A|ano|ANO)
+                    if is_remote; then
+                        printf '%s\n' 'SSH spojeni muze byt ukonceno. Po prihlaseni potvrdte novou sit v menu.'
+                    fi
+                    sudo /usr/local/sbin/consolepi-control network apply dhcp
+                    ;;
+            esac
+            ;;
+        2)
+            current_address=$(nmcli -g IP4.ADDRESS device show eth0 2>/dev/null | head -n1)
+            current_ip=${current_address%/*}
+            current_prefix=${current_address#*/}
+            current_gateway=$(nmcli -g IP4.GATEWAY device show eth0 2>/dev/null | head -n1)
+            current_dns=$(nmcli -g IP4.DNS device show eth0 2>/dev/null | paste -sd, -)
+            printf 'IP adresa [%s]: ' "$current_ip"
+            IFS= read -r address
+            address=${address:-$current_ip}
+            printf 'Prefix/maska CIDR [%s]: ' "$current_prefix"
+            IFS= read -r prefix
+            prefix=${prefix:-$current_prefix}
+            printf 'Vychozi brana [%s]: ' "$current_gateway"
+            IFS= read -r gateway
+            gateway=${gateway:-$current_gateway}
+            printf 'DNS, vice adres oddelte carkou [%s]: ' "$current_dns"
+            IFS= read -r dns
+            dns=${dns:-$current_dns}
+            printf '\nPouzit %s/%s, brana %s, DNS %s? [a/N]: ' \
+                "$address" "$prefix" "$gateway" "$dns"
+            IFS= read -r answer
+            case "$answer" in
+                a|A|ano|ANO)
+                    if is_remote; then
+                        printf '%s\n' 'SSH spojeni muze byt ukonceno. Pripojte se na novou IP a zmenu potvrdte v menu.'
+                    fi
+                    sudo /usr/local/sbin/consolepi-control network apply static \
+                        "$address" "$prefix" "$gateway" "$dns"
+                    ;;
+            esac
+            ;;
+    esac
+}
+
+factory_reset() {
+    printf '\n\033[31mTOVARNI RESET\033[0m\n'
+    printf '%s\n' 'Nastavi DHCP, vymaze prirazeni USB kabelu, RADIUS, seriove predvolby a souborove zaznamy relaci.'
+    printf '%s\n' 'Hesla spravce, SSH host klice, HTTPS certifikat a pristupove udaje zustanou zachovane.'
+    printf 'Pro potvrzeni napiste presne RESET: '
+    IFS= read -r confirmation
+    if [ "$confirmation" != "RESET" ]; then
+        printf '%s\n' 'Reset byl zrusen.'
+        return
+    fi
+    printf 'Opravdu pokracovat? [a/N]: '
+    IFS= read -r answer
+    case "$answer" in
+        a|A|ano|ANO)
+            printf '%s\n' 'Probiha tovarni reset. Sitove spojeni muze byt ukonceno...'
+            printf '%s\n' 'RESET' |
+                sudo /usr/local/sbin/consolepi-control factory reset
+            ;;
+        *) printf '%s\n' 'Reset byl zrusen.' ;;
+    esac
+}
+
+confirm_pending
+
+while :; do
+    clear
+    /usr/local/sbin/consolepi-login-status
+    printf '%s\n' '  [1] Obnovit stav'
+    printf '%s\n' '  [2] Nastaveni site (DHCP / staticka IPv4)'
+    printf '%s\n' '  [3] Diagnostika ConsolePi'
+    printf '%s\n' '  [4] Obnovit tovarni nastaveni'
+    printf '%s\n' '  [5] Prejit do shellu'
+    printf '%s\n' '  [6] Obnovit heslo webove administrace'
+    printf '%s\n' '  [0] Odhlasit'
+    printf '\nVolba: '
+    IFS= read -r choice || exit 0
+    case "$choice" in
+        1) ;;
+        2) configure_network; pause ;;
+        3) sudo /usr/local/sbin/consolepi-diagnose; pause ;;
+        4) factory_reset; pause ;;
+        5) printf '%s\n' 'Prechazim do administracniho shellu.'; exec /bin/bash --noprofile --norc ;;
+        6) sudo /usr/local/sbin/consolepi-reset-web-password; pause ;;
+        0) exit 0 ;;
+        *) printf '%s\n' 'Neplatna volba.'; pause ;;
+    esac
+done

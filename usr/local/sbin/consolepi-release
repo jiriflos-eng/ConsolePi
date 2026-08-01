@@ -1,0 +1,169 @@
+#!/usr/bin/python3
+"""Verify and install signed offline ConsolePi releases."""
+import hashlib
+import io
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tarfile
+import tempfile
+from datetime import datetime, timezone
+from pathlib import Path
+
+VERSION_FILE = Path("/usr/share/consolepi/VERSION")
+PUBLIC_KEY = Path("/etc/consolepi/update-allowed-signers")
+RELEASE_DIR = Path("/var/lib/consolepi/releases")
+MAX_PACKAGE = 48 * 1024 * 1024
+
+
+def installed_version():
+    try:
+        return VERSION_FILE.read_text().strip()
+    except OSError:
+        return "neznámá"
+
+
+def status():
+    print(json.dumps({
+        "version": installed_version(),
+        "signature_ready": PUBLIC_KEY.is_file(),
+        "history": str(RELEASE_DIR / "installed.json"),
+    }))
+
+
+def safe_member(member: tarfile.TarInfo) -> bool:
+    path = Path(member.name)
+    return not path.is_absolute() and ".." not in path.parts and member.isreg()
+
+
+def read_bundle(bundle: Path):
+    if not bundle.is_file() or bundle.stat().st_size > MAX_PACKAGE:
+        raise ValueError("Aktualizační balíček neexistuje nebo je příliš velký.")
+    with tarfile.open(bundle, "r:gz") as archive:
+        members = {item.name: item for item in archive.getmembers() if safe_member(item)}
+        required = {"manifest.json", "signature.sshsig", "payload.tar.gz"}
+        if set(members) != required:
+            raise ValueError("Neplatná struktura aktualizačního balíčku.")
+        values = {name: archive.extractfile(members[name]).read() for name in required}
+    try:
+        manifest = json.loads(values["manifest.json"])
+    except json.JSONDecodeError as exc:
+        raise ValueError("Manifest aktualizace není platný JSON.") from exc
+    expected = {"format", "version", "created_at", "payload_sha256"}
+    if set(manifest) != expected or manifest["format"] != "consolepi-update-1":
+        raise ValueError("Aktualizační balíček nemá podporovaný formát.")
+    if not manifest["version"] or not all(piece.isdigit() for piece in str(manifest["version"]).split(".")):
+        raise ValueError("Aktualizační balíček obsahuje neplatnou verzi.")
+    canonical = json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode()
+    if not PUBLIC_KEY.is_file():
+        raise ValueError("Chybí veřejný klíč pro ověření aktualizace.")
+    with tempfile.NamedTemporaryFile(prefix="consolepi-signature-", delete=False) as signature_file:
+        signature_file.write(values["signature.sshsig"])
+        signature_path = signature_file.name
+    try:
+        verified = subprocess.run(
+            ["ssh-keygen", "-Y", "verify", "-f", str(PUBLIC_KEY), "-I", "consolepi-release", "-n", "consolepi-release", "-s", signature_path],
+            input=canonical, text=False, capture_output=True, check=False,
+        )
+    finally:
+        Path(signature_path).unlink(missing_ok=True)
+    if verified.returncode:
+        raise ValueError("Podpis aktualizace není platný.")
+    if hashlib.sha256(values["payload.tar.gz"]).hexdigest() != manifest["payload_sha256"]:
+        raise ValueError("Kontrolní součet obsahu aktualizace nesouhlasí.")
+    return manifest, values["payload.tar.gz"]
+
+
+def safe_extract(payload, target: Path):
+    with tarfile.open(fileobj=io.BytesIO(payload), mode="r:gz") as archive:
+        members = archive.getmembers()
+        for member in members:
+            if not safe_member(member):
+                raise ValueError("Obsah aktualizace obsahuje nepovolenou cestu.")
+        # ``filter=data`` potlačí varování Pythonu 3.14 a navíc zapne další
+        # ochranu metadat. Pro Raspberry Pi OS s Pythonem 3.11 zůstává bezpečný
+        # fallback: každý člen jsme výše ověřili jako běžný relativní soubor.
+        for member in members:
+            if sys.version_info >= (3, 12):
+                archive.extract(member, target, filter="data")
+            else:
+                archive.extract(member, target)
+
+
+def version_key(value):
+    return tuple(int(part) for part in str(value).split("."))
+
+
+def release_notes(payload):
+    with tarfile.open(fileobj=io.BytesIO(payload), mode="r:gz") as archive:
+        member = next((item for item in archive.getmembers() if item.name == "RELEASE_NOTES.md" and safe_member(item)), None)
+        if member is None or member.size > 64 * 1024:
+            return "Poznámky k této aktualizaci nejsou součástí balíčku."
+        return archive.extractfile(member).read().decode("utf-8", errors="replace").strip()
+
+
+def inspect(bundle: Path):
+    manifest, payload = read_bundle(bundle)
+    current = installed_version()
+    if current != "neznámá" and version_key(manifest["version"]) <= version_key(current):
+        raise ValueError(f"Balíček {manifest['version']} není novější než nainstalované ConsolePi {current}.")
+    print(json.dumps({
+        "version": manifest["version"],
+        "current_version": current,
+        "created_at": manifest["created_at"],
+        "notes": release_notes(payload),
+    }, ensure_ascii=False))
+
+
+def install(bundle: Path):
+    manifest, payload = read_bundle(bundle)
+    current = installed_version()
+    if current != "neznámá" and version_key(manifest["version"]) <= version_key(current):
+        raise ValueError(f"Balíček {manifest['version']} není novější než nainstalované ConsolePi {current}.")
+    with tempfile.TemporaryDirectory(prefix="consolepi-release-", dir="/var/tmp") as temporary:
+        staging = Path(temporary)
+        safe_extract(payload, staging)
+        installer = staging / "install.sh"
+        if not installer.is_file():
+            raise ValueError("Aktualizace neobsahuje instalační skript.")
+        result = subprocess.run(
+            [str(installer), "--update", "--no-firewall"],
+            text=True, capture_output=True, check=False, timeout=240,
+            env={**os.environ, "CONSOLEPI_RELEASE_VERSION": str(manifest["version"])},
+        )
+        if result.returncode:
+            raise ValueError(result.stderr.strip() or result.stdout.strip() or "Instalace aktualizace selhala.")
+    RELEASE_DIR.mkdir(parents=True, exist_ok=True)
+    record = {
+        "version": manifest["version"],
+        "installed_at": datetime.now(timezone.utc).isoformat(),
+        "payload_sha256": manifest["payload_sha256"],
+    }
+    temporary = RELEASE_DIR / ".installed.new"
+    temporary.write_text(json.dumps(record, indent=2) + "\n")
+    temporary.replace(RELEASE_DIR / "installed.json")
+    print(json.dumps(record))
+
+
+def main():
+    if os.geteuid() != 0:
+        raise ValueError("Nástroj aktualizace musí běžet jako root.")
+    if len(sys.argv) == 2 and sys.argv[1] == "status":
+        status()
+        return
+    if len(sys.argv) == 3 and sys.argv[1] == "inspect":
+        inspect(Path(sys.argv[2]))
+        return
+    if len(sys.argv) == 3 and sys.argv[1] == "install":
+        install(Path(sys.argv[2]))
+        return
+    raise ValueError("Použití: consolepi-release status | inspect SOUBOR | install SOUBOR.cpiupdate")
+
+
+try:
+    main()
+except Exception as exc:
+    print(str(exc), file=sys.stderr)
+    raise SystemExit(1)

@@ -1,0 +1,11 @@
+{
+  "primary_host": "",
+  "primary_port": 1812,
+  "primary_secret_set": false,
+  "secondary_host": "",
+  "secondary_port": 1812,
+  "secondary_secret_set": false,
+  "timeout": 3,
+  "retries": 1,
+  "accounting": false
+}

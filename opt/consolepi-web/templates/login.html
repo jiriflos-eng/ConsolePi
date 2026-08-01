@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Přihlášení · ConsolePi{% endblock %}
+{% block content %}
+<section class="login-card">
+  <div class="brand brand-with-logo login-brand">
+    {% include "_brand.html" %}
+    <small>Správa sériových konzolí</small>
+  </div>
+  {% for category, message in get_flashed_messages(with_categories=true) %}
+    <div class="notice {{ category }}">{{ message }}</div>
+  {% endfor %}
+  <form method="post" class="form-stack">
+    <label>Administrátorské heslo<input type="password" name="password" autocomplete="current-password" required autofocus></label>
+    <button type="submit">Přihlásit se</button>
+  </form>
+</section>
+{% endblock %}

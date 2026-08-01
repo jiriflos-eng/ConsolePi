@@ -1,0 +1,731 @@
+#!/usr/bin/python3
+import base64
+import hashlib
+import io
+import json
+import os
+import pwd
+import re
+import shutil
+import socket
+import subprocess
+import sys
+import tarfile
+import tempfile
+from datetime import datetime, timezone
+from pathlib import Path
+
+from cryptography import x509
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+
+IDENTITY = Path("/etc/consolepi/identity.json")
+FIRSTBOOT = Path("/etc/consolepi/firstboot.json")
+HOSTS = Path("/etc/hosts")
+TLS_DIR = Path("/etc/consolepi/tls")
+TLS_CERT = TLS_DIR / "consolepi.crt"
+TLS_KEY = TLS_DIR / "consolepi.key"
+WEB_AUTH = Path("/etc/consolepi/web.auth")
+ADMIN_AUTHORIZED_KEYS = Path("/home/consolepi/.ssh/authorized_keys")
+NTP_SOURCES = Path("/etc/chrony/sources.d/consolepi.sources")
+TIMESYNCD_CONFIG = Path("/etc/systemd/timesyncd.conf.d/consolepi.conf")
+BACKUP_HEADER = b"CONSOLEPI-BACKUP-1\n"
+BACKUP_FILES = {
+    "etc/consolepi/ports.conf": (0o644, False),
+    "etc/consolepi/serial.conf": (0o644, False),
+    "etc/consolepi/consolepi.conf": (0o644, False),
+    "etc/consolepi/auth.conf": (0o644, False),
+    "etc/consolepi/radius.json": (0o644, False),
+    "etc/consolepi/radius-secrets.json": (0o600, True),
+    "etc/consolepi/proxy.json": (0o600, True),
+    "etc/consolepi/identity.json": (0o644, False),
+    "etc/consolepi/labels.json": (0o644, False),
+    "etc/consolepi/web.auth": (0o640, True),
+    "home/console/.ssh/authorized_keys": (0o600, True),
+    "etc/consolepi/tls/consolepi.crt": (0o644, False),
+    "etc/consolepi/tls/consolepi.key": (0o600, True),
+    "etc/udev/rules.d/70-consolepi.rules": (0o644, False),
+    "etc/nftables.conf": (0o755, False),
+    "etc/chrony/sources.d/consolepi.sources": (0o644, False),
+    "etc/systemd/timesyncd.conf.d/consolepi.conf": (0o644, False),
+}
+
+
+def run(*args, input_text=None, timeout=30):
+    try:
+        return subprocess.run(
+            args, input=input_text, text=True, capture_output=True,
+            check=False, timeout=timeout,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired) as exc:
+        return subprocess.CompletedProcess(args, 127, "", str(exc))
+
+
+def atomic(path, data, mode):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.new")
+    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, mode)
+    try:
+        os.write(descriptor, data)
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+    os.chmod(temporary, mode)
+    os.replace(temporary, path)
+    directory = os.open(path.parent, os.O_RDONLY)
+    try:
+        os.fsync(directory)
+    finally:
+        os.close(directory)
+
+
+def payload():
+    return json.loads(sys.stdin.read(8 * 1024 * 1024) or "{}")
+
+
+def card_id():
+    """Return a stable identifier of the physical SD card, if available."""
+    for path in (
+        Path("/sys/block/mmcblk0/device/cid"),
+        Path("/sys/block/mmcblk0/device/serial"),
+    ):
+        try:
+            value = path.read_text().strip().lower()
+        except OSError:
+            continue
+        if re.fullmatch(r"[0-9a-f]{8,64}", value):
+            return value
+    return ""
+
+
+def firstboot_values():
+    try:
+        values = json.loads(FIRSTBOOT.read_text())
+    except (OSError, json.JSONDecodeError):
+        values = {"state": "pending", "reason": "missing_state"}
+    return values if isinstance(values, dict) else {"state": "pending"}
+
+
+def write_firstboot(values):
+    atomic(FIRSTBOOT, (json.dumps(values, indent=2) + "\n").encode(), 0o600)
+
+
+def firstboot_pending():
+    values = firstboot_values()
+    current_card = card_id()
+    saved_card = str(values.get("card_id", ""))
+    if values.get("state") == "pending":
+        return True, str(values.get("reason", "factory_reset")), current_card
+    if current_card and saved_card and current_card != saved_card:
+        return True, "new_card", current_card
+    return False, "", current_card
+
+
+def firstboot_status():
+    pending, reason, current_card = firstboot_pending()
+    print(json.dumps({
+        "pending": pending,
+        "reason": reason,
+        "card_detected": bool(current_card),
+        "hostname": socket.gethostname(),
+    }))
+
+
+def derive_key(passphrase, salt):
+    return PBKDF2HMAC(
+        algorithm=hashes.SHA256(), length=32, salt=salt, iterations=600_000
+    ).derive(passphrase.encode())
+
+
+def certificate_expiry(certificate):
+    value = certificate.not_valid_after
+    return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
+
+
+def backup_create():
+    values = payload()
+    passphrase = str(values.get("passphrase", ""))
+    include_secrets = bool(values.get("include_secrets"))
+    if len(passphrase) < 12:
+        raise ValueError("Heslo zálohy musí mít alespoň 12 znaků.")
+    memory = io.BytesIO()
+    manifest = {
+        "format": 1,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "hostname": socket.gethostname(),
+        "include_secrets": include_secrets,
+    }
+    with tarfile.open(fileobj=memory, mode="w:gz") as archive:
+        content = json.dumps(manifest, indent=2).encode()
+        info = tarfile.TarInfo("manifest.json")
+        info.size = len(content)
+        info.mode = 0o600
+        archive.addfile(info, io.BytesIO(content))
+        for relative, (_, secret) in BACKUP_FILES.items():
+            source = Path("/") / relative
+            if source.is_file() and (include_secrets or not secret):
+                archive.add(source, arcname=relative, recursive=False)
+    salt, nonce = os.urandom(16), os.urandom(12)
+    ciphertext = AESGCM(derive_key(passphrase, salt)).encrypt(
+        nonce, memory.getvalue(), BACKUP_HEADER
+    )
+    encrypted = BACKUP_HEADER + salt + nonce + ciphertext
+    print(json.dumps({
+        "filename": f"consolepi-{socket.gethostname()}-"
+        f"{datetime.now().strftime('%Y%m%d-%H%M%S')}.cpbackup",
+        "content": base64.b64encode(encrypted).decode(),
+        "include_secrets": include_secrets,
+    }))
+
+
+def decrypt_backup(data, passphrase):
+    if not data.startswith(BACKUP_HEADER):
+        raise ValueError("Soubor není rozpoznaná šifrovaná záloha ConsolePi.")
+    offset = len(BACKUP_HEADER)
+    salt, nonce = data[offset:offset + 16], data[offset + 16:offset + 28]
+    try:
+        return AESGCM(derive_key(passphrase, salt)).decrypt(
+            nonce, data[offset + 28:], BACKUP_HEADER
+        )
+    except Exception as exc:
+        raise ValueError("Zálohu nelze dešifrovat; zkontrolujte heslo.") from exc
+
+
+def backup_restore():
+    values = payload()
+    if values.get("confirmation") != "OBNOVIT":
+        raise ValueError("Obnova vyžaduje potvrzení textem OBNOVIT.")
+    raw = base64.b64decode(values.get("content", ""), validate=True)
+    clear = decrypt_backup(raw, str(values.get("passphrase", "")))
+    restored = []
+    with tarfile.open(fileobj=io.BytesIO(clear), mode="r:gz") as archive:
+        members = archive.getmembers()
+        names = {member.name for member in members}
+        if "manifest.json" not in names:
+            raise ValueError("Záloha neobsahuje manifest.")
+        for member in members:
+            if member.name == "manifest.json":
+                continue
+            if (
+                member.name not in BACKUP_FILES or not member.isfile()
+                or member.size > 2 * 1024 * 1024
+            ):
+                raise ValueError(f"Nepovolená položka v záloze: {member.name}")
+            data = archive.extractfile(member).read()
+            mode, _ = BACKUP_FILES[member.name]
+            atomic(Path("/") / member.name, data, mode)
+            restored.append(member.name)
+    run("/usr/local/sbin/consolepi-control", "auth", "sync", timeout=30)
+    if Path("/etc/consolepi/web.auth").exists():
+        os.chown(
+            "/etc/consolepi/web.auth", 0, pwd.getpwnam("consolepi-web").pw_gid
+        )
+    if Path("/home/console/.ssh/authorized_keys").exists():
+        console = pwd.getpwnam("console")
+        os.chown(
+            "/home/console/.ssh/authorized_keys", console.pw_uid, console.pw_gid
+        )
+    run("systemctl", "reload", "ssh")
+    run("systemctl", "restart", "consolepi-port-monitor", timeout=30)
+    run("systemctl", "reload", "nginx", timeout=30)
+    print(json.dumps({"restored": restored}))
+
+
+def diagnostic_create():
+    memory = io.BytesIO()
+    commands = {
+        "system.txt": ["uname", "-a"],
+        "time.txt": ["timedatectl", "status"],
+        "network.txt": ["nmcli", "-f", "GENERAL,IP4", "device", "show", "eth0"],
+        "services.txt": [
+            "systemctl", "--no-pager", "--failed",
+        ],
+        "disk.txt": ["df", "-h", "/"],
+        "memory.txt": ["free", "-h"],
+        "usb.txt": ["lsusb"],
+        "journal.txt": [
+            "journalctl", "-u", "consolepi-web", "-u", "consolepi-port-monitor",
+            "-n", "250", "--no-pager",
+        ],
+    }
+    with tarfile.open(fileobj=memory, mode="w:gz") as archive:
+        for name, command in commands.items():
+            result = run(*command, timeout=25)
+            text = result.stdout + result.stderr
+            text = re.sub(
+                r"(?i)(password|secret|token|community|authorization)"
+                r"(\s*[=:]\s*)\S+",
+                r"\1\2[ODSTRANENO]",
+                text,
+            )
+            text = text.replace(socket.gethostname(), "[HOSTNAME]")
+            text = re.sub(
+                r"\b(?!127(?:\.\d{1,3}){3})"
+                r"(?:\d{1,3}\.){3}\d{1,3}(?:/\d{1,2})?\b",
+                "[IP]",
+                text,
+            )
+            text = re.sub(
+                r"\b(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}\b",
+                "[MAC]",
+                text,
+            )
+            content = text.encode(errors="replace")
+            info = tarfile.TarInfo(name)
+            info.size, info.mode = len(content), 0o600
+            archive.addfile(info, io.BytesIO(content))
+        for relative in (
+            "etc/consolepi/ports.conf", "etc/consolepi/serial.conf",
+            "etc/consolepi/auth.conf", "etc/consolepi/radius.json",
+            "etc/consolepi/identity.json",
+        ):
+            source = Path("/") / relative
+            if source.is_file():
+                archive.add(source, arcname=f"config/{source.name}")
+    print(json.dumps({
+        "filename": f"consolepi-diagnostika-{datetime.now().strftime('%Y%m%d-%H%M%S')}.tar.gz",
+        "content": base64.b64encode(memory.getvalue()).decode(),
+    }))
+
+
+def time_status():
+    show = run(
+        "timedatectl", "show", "--property=Timezone", "--property=NTP",
+        "--property=NTPSynchronized",
+    ).stdout
+    values = dict(
+        line.split("=", 1) for line in show.splitlines() if "=" in line
+    )
+    servers = []
+    if NTP_SOURCES.exists():
+        for line in NTP_SOURCES.read_text().splitlines():
+            match = re.match(r"^(?:server|pool)\s+(\S+)", line)
+            if match:
+                servers.append(match.group(1))
+    if not servers and TIMESYNCD_CONFIG.exists():
+        match = re.search(r"^NTP=(.*)$", TIMESYNCD_CONFIG.read_text(), re.MULTILINE)
+        if match:
+            servers = match.group(1).split()
+    print(json.dumps({
+        "timezone": values.get("Timezone", "Europe/Prague"),
+        "enabled": values.get("NTP") == "yes",
+        "synchronized": values.get("NTPSynchronized") == "yes",
+        "servers": servers,
+        "local_time": datetime.now().astimezone().strftime("%d.%m.%Y %H:%M:%S %Z"),
+    }))
+
+
+def time_configure():
+    values = payload()
+    timezone_name = str(values.get("timezone", ""))
+    zone = Path("/usr/share/zoneinfo") / timezone_name
+    if not timezone_name or ".." in timezone_name or not zone.is_file():
+        raise ValueError("Neplatná časová zóna.")
+    servers = [
+        item.strip() for item in str(values.get("servers", "")).split(",")
+        if item.strip()
+    ]
+    if len(servers) > 4 or any(
+        not re.fullmatch(r"[A-Za-z0-9._:-]{1,253}", item) for item in servers
+    ):
+        raise ValueError("Neplatný seznam NTP serverů.")
+    run("timedatectl", "set-timezone", timezone_name)
+    content = "# Spravováno ConsolePi.\n" + "".join(
+        f"server {server} iburst\n" for server in servers
+    )
+    atomic(NTP_SOURCES, content.encode(), 0o644)
+    timesyncd = "[Time]\nNTP=" + " ".join(servers) + "\n"
+    atomic(TIMESYNCD_CONFIG, timesyncd.encode(), 0o644)
+    run("timedatectl", "set-ntp", "true")
+    if run("systemctl", "is-active", "chrony").stdout.strip() == "active":
+        run("systemctl", "restart", "chrony")
+    else:
+        run("systemctl", "restart", "systemd-timesyncd")
+    time_status()
+
+
+def identity_status():
+    values = {"display_name": "ConsolePi", "location": "", "description": ""}
+    if IDENTITY.exists():
+        values.update(json.loads(IDENTITY.read_text()))
+    values["hostname"] = socket.gethostname()
+    print(json.dumps(values))
+
+
+def identity_apply(values):
+    hostname = str(values.get("hostname", "")).strip()
+    if not re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?", hostname):
+        raise ValueError("Neplatný hostname.")
+    identity = {}
+    for key, maximum in (
+        ("display_name", 80), ("location", 120), ("description", 240)
+    ):
+        value = str(values.get(key, "")).strip()
+        if len(value) > maximum or any(char in value for char in "\r\n"):
+            raise ValueError("Údaj identity je příliš dlouhý nebo neplatný.")
+        identity[key] = value
+    atomic(IDENTITY, (json.dumps(identity, indent=2) + "\n").encode(), 0o644)
+    if hostname != socket.gethostname():
+        run("hostnamectl", "set-hostname", hostname)
+    hosts_lines = HOSTS.read_text().splitlines()
+    replacement = f"127.0.1.1\t{hostname}"
+    updated = False
+    for index, line in enumerate(hosts_lines):
+        if line.split("#", 1)[0].split()[:1] == ["127.0.1.1"]:
+            hosts_lines[index] = replacement
+            updated = True
+            break
+    if not updated:
+        hosts_lines.append(replacement)
+    atomic(HOSTS, ("\n".join(hosts_lines) + "\n").encode(), 0o644)
+
+
+def identity_configure():
+    identity_apply(payload())
+    identity_status()
+
+
+def tls_status():
+    certificate = x509.load_pem_x509_certificate(TLS_CERT.read_bytes())
+    now = datetime.now(timezone.utc)
+    expires = certificate_expiry(certificate)
+    print(json.dumps({
+        "subject": certificate.subject.rfc4514_string(),
+        "issuer": certificate.issuer.rfc4514_string(),
+        "expires": expires.astimezone().strftime("%d.%m.%Y %H:%M:%S %Z"),
+        "days_left": (expires - now).days,
+        "self_signed": certificate.issuer == certificate.subject,
+        "sha256": certificate.fingerprint(hashes.SHA256()).hex(":"),
+    }))
+
+
+def tls_install():
+    values = payload()
+    if values.get("confirmation") != "CERTIFIKAT":
+        raise ValueError("Instalace vyžaduje potvrzení textem CERTIFIKAT.")
+    cert = base64.b64decode(values.get("certificate", ""), validate=True)
+    key = base64.b64decode(values.get("private_key", ""), validate=True)
+    certificate = x509.load_pem_x509_certificate(cert)
+    private_key = serialization.load_pem_private_key(key, password=None)
+    if (
+        certificate.public_key().public_bytes(
+            serialization.Encoding.DER,
+            serialization.PublicFormat.SubjectPublicKeyInfo,
+        )
+        != private_key.public_key().public_bytes(
+            serialization.Encoding.DER,
+            serialization.PublicFormat.SubjectPublicKeyInfo,
+        )
+    ):
+        raise ValueError("Certifikát a privátní klíč k sobě nepatří.")
+    if certificate_expiry(certificate) <= datetime.now(timezone.utc):
+        raise ValueError("Certifikát je již neplatný.")
+    TLS_DIR.mkdir(parents=True, exist_ok=True)
+    previous_cert = TLS_CERT.read_bytes() if TLS_CERT.exists() else None
+    previous_key = TLS_KEY.read_bytes() if TLS_KEY.exists() else None
+    atomic(TLS_CERT, cert, 0o644)
+    atomic(TLS_KEY, key, 0o600)
+    check = run("nginx", "-t")
+    if check.returncode:
+        if previous_cert is not None:
+            atomic(TLS_CERT, previous_cert, 0o644)
+        if previous_key is not None:
+            atomic(TLS_KEY, previous_key, 0o600)
+        raise ValueError(check.stderr.strip())
+    run("systemctl", "reload", "nginx")
+    tls_status()
+
+
+def tls_generate():
+    values = payload()
+    if values.get("confirmation") != "NOVY":
+        raise ValueError("Vytvoření certifikátu vyžaduje potvrzení NOVY.")
+    hostname = socket.gethostname()
+    addresses = [
+        value for value in run("hostname", "-I").stdout.split()
+        if re.fullmatch(r"[0-9a-fA-F:.]+", value)
+    ]
+    config = tempfile.NamedTemporaryFile("w", delete=False)
+    try:
+        config.write("[req]\ndistinguished_name=dn\nx509_extensions=ext\nprompt=no\n")
+        config.write(f"[dn]\nCN={hostname}\n[ext]\nsubjectAltName=@alt\n[alt]\n")
+        config.write(f"DNS.1={hostname}\nDNS.2={hostname}.local\n")
+        for index, address in enumerate(addresses, 1):
+            config.write(f"IP.{index}={address}\n")
+        config.close()
+        result = run(
+            "openssl", "req", "-x509", "-newkey", "rsa:3072", "-sha256",
+            "-nodes", "-days", "825", "-config", config.name,
+            "-keyout", str(TLS_KEY), "-out", str(TLS_CERT), timeout=60,
+        )
+        if result.returncode:
+            raise ValueError(result.stderr.strip())
+        os.chmod(TLS_KEY, 0o600)
+        os.chmod(TLS_CERT, 0o644)
+        run("systemctl", "reload", "nginx")
+    finally:
+        Path(config.name).unlink(missing_ok=True)
+    tls_status()
+
+
+def audit_status():
+    findings = []
+    def add(level, title, detail):
+        findings.append({"level": level, "title": title, "detail": detail})
+    ntp = json.loads(run(
+        "timedatectl", "show", "--property=NTPSynchronized", "--value"
+    ).stdout.strip().replace("yes", "true").replace("no", "false") or "false")
+    if not ntp:
+        add("error", "Čas není synchronizován", "NTP zatím nepotvrdilo přesný čas.")
+    if run("systemctl", "is-active", "nftables").stdout.strip() != "active":
+        add("error", "Firewall není aktivní", "Služba nftables není v provozu.")
+    disk = os.statvfs("/")
+    free_percent = disk.f_bavail * 100 / disk.f_blocks
+    if free_percent < 10:
+        add("error", "Dochází místo na disku", f"Volných je pouze {free_percent:.1f} %.")
+    certificate = x509.load_pem_x509_certificate(TLS_CERT.read_bytes())
+    days = (certificate_expiry(certificate) - datetime.now(timezone.utc)).days
+    if days < 30:
+        add("error", "TLS certifikát brzy vyprší", f"Zbývá {days} dní.")
+    elif certificate.issuer == certificate.subject:
+        add("warning", "Vlastní podepsaný certifikát", "Pro produkci zvažte firemní CA.")
+    auth = Path("/etc/consolepi/auth.conf").read_text()
+    if "AUTH_MODE=local_password" in auth:
+        add("warning", "Sdílené konzolové heslo", "Bezpečnější je SSH klíč nebo RADIUS.")
+    if not findings:
+        add("ok", "Bez zjištěných problémů", "Kontrolované bezpečnostní prvky jsou v pořádku.")
+    score = max(0, 100 - sum(
+        25 if item["level"] == "error" else 10
+        for item in findings if item["level"] != "ok"
+    ))
+    print(json.dumps({"score": score, "findings": findings}))
+
+
+def clone_rekey():
+    values = payload()
+    if values.get("confirmation") != "KLONOVAT":
+        raise ValueError("Operace vyžaduje potvrzení KLONOVAT.")
+    for path in Path("/etc/ssh").glob("ssh_host_*"):
+        path.unlink()
+    result = run("ssh-keygen", "-A")
+    if result.returncode:
+        raise ValueError(result.stderr.strip())
+    tls_generate_from_clone = {"confirmation": "NOVY"}
+    saved_stdin = sys.stdin
+    sys.stdin = io.StringIO(json.dumps(tls_generate_from_clone))
+    try:
+        tls_generate()
+    finally:
+        sys.stdin = saved_stdin
+    run("systemctl", "restart", "ssh")
+    print(json.dumps({"rekeyed": True}))
+
+
+def validate_admin_public_key(value):
+    """Accept one modern administrative public key, never a private key."""
+    line = str(value or "").strip()
+    fields = line.split(maxsplit=2)
+    if len(fields) not in (2, 3) or fields[0] != "ssh-ed25519":
+        raise ValueError("Veřejný klíč musí být jeden klíč OpenSSH typu ssh-ed25519.")
+    checked = run("ssh-keygen", "-lf", "-", input_text=line + "\n")
+    if checked.returncode:
+        raise ValueError("Veřejný SSH klíč není platný.")
+    return line
+
+
+def install_admin_public_key(value):
+    """Replace bootstrap access keys after first boot or a reset."""
+    line = validate_admin_public_key(value)
+    try:
+        administrator = pwd.getpwnam("consolepi")
+        console = pwd.getpwnam("console")
+    except KeyError as exc:
+        raise ValueError("Účet ConsolePi neexistuje.") from exc
+    ADMIN_AUTHORIZED_KEYS.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    os.chown(ADMIN_AUTHORIZED_KEYS.parent, administrator.pw_uid, administrator.pw_gid)
+    os.chmod(ADMIN_AUTHORIZED_KEYS.parent, 0o700)
+    atomic(ADMIN_AUTHORIZED_KEYS, (line + "\n").encode(), 0o600)
+    os.chown(ADMIN_AUTHORIZED_KEYS, administrator.pw_uid, administrator.pw_gid)
+    console_keys = Path("/home/console/.ssh/authorized_keys")
+    console_keys.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    os.chown(console_keys.parent, console.pw_uid, console.pw_gid)
+    os.chmod(console_keys.parent, 0o700)
+    atomic(console_keys, (line + "\n").encode(), 0o600)
+    os.chown(console_keys, console.pw_uid, console.pw_gid)
+    return line
+
+
+def firstboot_admin_key_install():
+    line = install_admin_public_key(payload().get("public_key", ""))
+    run(
+        "logger", "-p", "authpriv.notice", "-t", "consolepi",
+        "FIRSTBOOT_ADMIN_KEY_INSTALLED type=ed25519",
+    )
+    print(json.dumps({"installed": True, "comment": line.split(maxsplit=2)[2] if len(line.split(maxsplit=2)) == 3 else ""}))
+
+
+def firstboot_configure():
+    values = payload()
+    password_hash = str(values.get("web_password_hash", "")).strip()
+    if not password_hash.startswith(("scrypt:", "pbkdf2:")) or len(password_hash) > 1024:
+        raise ValueError("Neplatné heslo webové administrace.")
+    public_key = str(values.get("admin_public_key", "")).strip()
+    if public_key:
+        # Validate before changing the device identity or web password.
+        validate_admin_public_key(public_key)
+
+    # Reuse the same validation and atomic identity update as the system page.
+    identity_apply({
+        "hostname": values.get("hostname", ""),
+        "display_name": values.get("display_name", ""),
+        "location": values.get("location", ""),
+        "description": values.get("description", ""),
+    })
+
+    try:
+        web_group = pwd.getpwnam("consolepi-web").pw_gid
+    except KeyError as exc:
+        raise ValueError("Služba webové administrace není nainstalována.") from exc
+    atomic(WEB_AUTH, (password_hash + "\n").encode(), 0o640)
+    os.chown(WEB_AUTH, 0, web_group)
+
+    if public_key:
+        install_admin_public_key(public_key)
+
+    # A clone must never retain the source device's host identity.
+    for path in Path("/etc/ssh").glob("ssh_host_*"):
+        path.unlink()
+    result = run("ssh-keygen", "-A")
+    if result.returncode:
+        raise ValueError(result.stderr.strip() or "Nelze vytvořit SSH host klíče.")
+    saved_stdin = sys.stdin
+    sys.stdin = io.StringIO(json.dumps({"confirmation": "NOVY"}))
+    try:
+        tls_generate()
+    finally:
+        sys.stdin = saved_stdin
+    run("systemctl", "restart", "ssh")
+
+    write_firstboot({
+        "state": "complete",
+        "card_id": card_id(),
+        "completed_at": datetime.now(timezone.utc).isoformat(),
+    })
+    run(
+        "logger", "-p", "authpriv.notice", "-t", "consolepi",
+        f"FIRSTBOOT_COMPLETE hostname={socket.gethostname()}",
+    )
+    print(json.dumps({"configured": True, "hostname": socket.gethostname()}))
+
+
+def storage_layout():
+    source = run("findmnt", "-n", "-o", "SOURCE", "/").stdout.strip()
+    root_path = os.path.realpath(source)
+    root_name = Path(root_path).name
+    root_sys = Path("/sys/class/block") / root_name
+    fstype = run("findmnt", "-n", "-o", "FSTYPE", "/").stdout.strip()
+    if not root_sys.exists() or fstype != "ext4":
+        return {"eligible": False, "reason": "Kořenový systém není standardní ext4 oddíl."}
+    try:
+        part_number = int((root_sys / "partition").read_text().strip())
+        start = int((root_sys / "start").read_text().strip()) * 512
+        part_bytes = int((root_sys / "size").read_text().strip()) * 512
+    except (OSError, ValueError):
+        return {"eligible": False, "reason": "Nelze určit parametry kořenového oddílu."}
+    parent = os.path.basename(os.path.realpath(root_sys / ".."))
+    disk_sys = Path("/sys/class/block") / parent
+    try:
+        disk_bytes = int((disk_sys / "size").read_text().strip()) * 512
+    except (OSError, ValueError):
+        return {"eligible": False, "reason": "Nelze určit fyzický disk kořenového systému."}
+    try:
+        partitions = [
+            int(path.read_text().strip())
+            for path in disk_sys.glob("*/partition")
+        ]
+    except (OSError, ValueError):
+        partitions = []
+    if not partitions or part_number != max(partitions):
+        return {"eligible": False, "reason": "Kořenový oddíl není posledním oddílem na kartě."}
+    free_bytes = max(0, disk_bytes - start - part_bytes)
+    eligible = free_bytes >= 256 * 1024 * 1024
+    return {
+        "eligible": eligible,
+        "reason": "" if eligible else "Na konci karty není alespoň 256 MiB nevyužitého místa.",
+        "root": root_path,
+        "disk": f"/dev/{parent}",
+        "partition_number": part_number,
+        "filesystem": fstype,
+        "partition_bytes": part_bytes,
+        "disk_bytes": disk_bytes,
+        "free_bytes": free_bytes,
+    }
+
+
+def storage_status():
+    print(json.dumps(storage_layout()))
+
+
+def storage_expand():
+    values = payload()
+    if values.get("confirmation") != "ROZSIRIT":
+        raise ValueError("Rozšíření vyžaduje potvrzení textem ROZSIRIT.")
+    layout = storage_layout()
+    if not layout.get("eligible"):
+        raise ValueError(layout.get("reason") or "Rozšíření není možné.")
+    if not shutil.which("growpart") or not shutil.which("resize2fs"):
+        raise ValueError("Chybí growpart nebo resize2fs; nelze bezpečně rozšířit oddíl.")
+    result = run(
+        "growpart", layout["disk"], str(layout["partition_number"]), timeout=120
+    )
+    if result.returncode:
+        raise ValueError(result.stderr.strip() or "Rozšíření oddílu selhalo.")
+    result = run("resize2fs", layout["root"], timeout=120)
+    if result.returncode:
+        raise ValueError(result.stderr.strip() or "Rozšíření souborového systému selhalo.")
+    after = storage_layout()
+    run(
+        "logger", "-p", "authpriv.notice", "-t", "consolepi",
+        f"STORAGE_EXPAND root={layout['root']} disk={layout['disk']}",
+    )
+    print(json.dumps({
+        "expanded": True,
+        "reboot_required": Path("/var/run/reboot-required").exists(),
+        "storage": after,
+    }))
+
+
+def main():
+    if os.geteuid() != 0 or len(sys.argv) != 3:
+        raise ValueError("Neplatné spuštění údržbového nástroje.")
+    group, action = sys.argv[1:]
+    handlers = {
+        ("backup", "create"): backup_create,
+        ("backup", "restore"): backup_restore,
+        ("diagnostic", "create"): diagnostic_create,
+        ("time", "status"): time_status,
+        ("time", "configure"): time_configure,
+        ("identity", "status"): identity_status,
+        ("identity", "configure"): identity_configure,
+        ("tls", "status"): tls_status,
+        ("tls", "install"): tls_install,
+        ("tls", "generate"): tls_generate,
+        ("audit", "status"): audit_status,
+        ("clone", "rekey"): clone_rekey,
+        ("firstboot", "status"): firstboot_status,
+        ("firstboot", "configure"): firstboot_configure,
+        ("firstboot", "admin-key-install"): firstboot_admin_key_install,
+        ("storage", "status"): storage_status,
+        ("storage", "expand"): storage_expand,
+    }
+    if (group, action) not in handlers:
+        raise ValueError("Nepovolená údržbová operace.")
+    handlers[(group, action)]()
+
+
+try:
+    main()
+except Exception as exc:
+    print(str(exc), file=sys.stderr)
+    raise SystemExit(1)

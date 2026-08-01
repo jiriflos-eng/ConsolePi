@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}První spuštění · ConsolePi{% endblock %}
+{% block content %}
+<section class="setup-shell">
+  <div class="brand brand-with-logo setup-brand">{% include "_brand.html" %}</div>
+  <p class="setup-eyebrow">První spuštění</p>
+  <h1 class="setup-title">Připravte nové zařízení ConsolePi</h1>
+  <p class="section-lead">Průvodce vytvoří novou identitu zařízení, heslo webové administrace, SSH hostitelské klíče a HTTPS certifikát. Spouští se {{ "po továrním resetu" if state.reason == "factory_reset" else "po zjištění nové SD karty" }}.</p>
+
+  {% for category, message in get_flashed_messages(with_categories=true) %}
+    <div class="notice {{ category }}">{{ message }}</div>
+  {% endfor %}
+
+  <form method="post" class="setup-form">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <section class="setup-card">
+      <span class="setup-step">1</span>
+      <div><p class="setup-step-lead">Zadejte nové heslo pro přístup do webové administrace.</p></div>
+      <label>Nové heslo<input type="password" name="web_password" autocomplete="new-password" required minlength="10" maxlength="128"></label>
+      <label>Nové heslo znovu<input type="password" name="web_password_confirmation" autocomplete="new-password" required minlength="10" maxlength="128"></label>
+    </section>
+
+    <section class="setup-card">
+      <span class="setup-step">2</span>
+      <div><h2>Identita zařízení</h2><p>Tyto údaje se zobrazí ve webu i v přihlašovacím přehledu terminálu.</p></div>
+      <label>Hostname<input name="hostname" value="{{ hostname }}" required maxlength="63" pattern="[a-z0-9][a-z0-9-]{0,61}[a-z0-9]|[a-z0-9]" autocapitalize="none"></label>
+      <label>Zobrazovaný název<input name="display_name" value="{{ identity.display_name }}" required maxlength="80" placeholder="ConsolePi – lokalita"></label>
+      <label>Umístění<input name="location" value="{{ identity.location }}" maxlength="120" placeholder="Serverovna, rack R14"></label>
+      <label>Popis (volitelné)<textarea name="description" maxlength="240" placeholder="Účel nebo kontaktní informace">{{ identity.description }}</textarea></label>
+    </section>
+
+    <section class="setup-card setup-key-card">
+      <span class="setup-step">3</span>
+      <div><h2>Administrativní SSH přístup</h2><p>Vyberte, jak se po dokončení průvodce přihlásíte na port SSH 22 jako uživatel <code>consolepi</code>. Privátní klíč se nikdy neukládá na ConsolePi.</p></div>
+      <div class="setup-key-options">
+        <label class="setup-key-option"><input type="radio" name="admin_key_mode" value="existing"><span><strong>Vložit existující veřejný klíč</strong><small>Vložte celý obsah souboru <code>consolepi-admin.pub</code>. Stávající dočasný přístup se nahradí tímto klíčem.</small></span></label>
+        <label class="setup-key-option"><input type="radio" name="admin_key_mode" value="generate" checked><span><strong>Vytvořit nový osobní klíč</strong><small>Po dokončení průvodce se klíč jednou stáhne do počítače. Uložte jej bezpečně a nastavte jej v SecureCRT jako Identity File.</small></span></label>
+      </div>
+      <label class="setup-public-key">Veřejný SSH klíč (jen při první volbě)<textarea name="admin_public_key" maxlength="2048" autocapitalize="none" autocomplete="off" spellcheck="false" placeholder="ssh-ed25519 AAAAC3... moje-zarizeni"></textarea></label>
+    </section>
+
+    <section class="setup-card setup-summary">
+      <span class="setup-step">4</span>
+      <div><h2>Co bude dokončeno</h2><p>Aktuální síť zůstane po dobu průvodce zachována: {{ network.address or "adresa zatím není přidělena" }}/{{ network.prefix }}. DHCP nebo statickou adresu lze potom bezpečně nastavit v nabídce Síť.</p></div>
+      <ul>
+        <li>Nové SSH hostitelské klíče zařízení</li>
+        <li>Nový lokální HTTPS certifikát pro zadaný hostname</li>
+        <li>Kontrola nevyužité kapacity SD karty</li>
+      </ul>
+    </section>
+    <button type="submit">Dokončit základní nastavení</button>
+  </form>
+</section>
+{% endblock %}

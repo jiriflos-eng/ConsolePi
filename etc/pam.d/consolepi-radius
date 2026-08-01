@@ -1,0 +1,5 @@
+# Tento soubor dokumentuje samostatný ConsolePi profil.
+# Aktivní směrování pro SSH je vloženo do /etc/pam.d/sshd instalačním skriptem.
+auth requisite pam_consolepi_user.so
+auth required pam_radius_auth.so conf=/etc/consolepi/pam_radius_auth.conf try_first_pass retry=1 client_id=ConsolePi
+account required pam_permit.so

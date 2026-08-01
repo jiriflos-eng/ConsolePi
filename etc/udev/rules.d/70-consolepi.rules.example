@@ -1,0 +1,14 @@
+# Preferujte /dev/serial/by-id – pro zařízení s unikátním ID není pravidlo třeba.
+# Atributy zjistíte:
+#   udevadm info --attribute-walk --name=/dev/ttyUSB0
+#
+# Varianta A: unikátní USB sériové číslo (nejlepší):
+# SUBSYSTEM=="tty", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="6001", ATTRS{serial}=="A1B2C3D4", SYMLINK+="consolepi/core-sw1", GROUP="dialout", MODE="0660"
+#
+# Varianta B: stabilní fyzická USB cesta. KERNELS hodnotu ověřte attribute-walk;
+# při přesunutí kabelu do jiného USB portu se název změní.
+# SUBSYSTEM=="tty", KERNEL=="ttyUSB*", KERNELS=="1-1.2", SYMLINK+="consolepi/core-sw1", GROUP="dialout", MODE="0660"
+#
+# Vytvořte jednu jednoznačnou řádku pro každý adaptér. Nekopírujte ukázky bez
+# nahrazení hodnot z konkrétního Raspberry Pi.
+

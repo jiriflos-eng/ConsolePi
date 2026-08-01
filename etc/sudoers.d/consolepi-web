@@ -1,0 +1,4 @@
+consolepi-web ALL=(root) NOPASSWD: /usr/local/sbin/consolepi-control
+consolepi-web ALL=(root) NOPASSWD: /usr/local/sbin/consolepi-maintenance
+consolepi-web ALL=(root) NOPASSWD: /usr/local/sbin/consolepi-release
+consolepi-web ALL=(root) NOPASSWD: /usr/local/sbin/consolepi-release-runner

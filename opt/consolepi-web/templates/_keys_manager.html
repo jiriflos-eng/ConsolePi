@@ -1,0 +1,33 @@
+<div class="embedded-keys">
+  <section>
+    <h2>Oprávněné veřejné klíče</h2>
+    <p class="hint">Klíče se připojují technickým uživatelem <code>console</code>. Privátní část zůstává pouze u uživatele.</p>
+    <div class="key-list">
+      {% for key in keys %}
+      <div class="key-row">
+        <div><strong>{{ key.comment }}</strong><code>{{ key.fingerprint }}</code></div>
+        <form action="{{ url_for('key_delete') }}" method="post" onsubmit="return confirm('{% if keys|length == 1 %}Opravdu odebrat poslední uložený přístupový klíč?{% else %}Opravdu odebrat tento přístupový klíč?{% endif %}')">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <input type="hidden" name="fingerprint" value="{{ key.fingerprint }}">
+          <input type="hidden" name="return_to" value="authentication">
+          <button class="danger-button" type="submit" {% if keys|length == 1 and auth.mode == "local_key" %}disabled title="Nejprve přepněte autentizaci na heslo nebo RADIUS"{% endif %}>Odebrat</button>
+        </form>
+      </div>
+      {% else %}
+      <p class="notice error">Není uložen žádný klíč. Před aktivací tohoto režimu vytvořte alespoň jeden.</p>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="embedded-key-create">
+    <h2>Vytvořit klíč pro SecureCRT</h2>
+    <form action="{{ url_for('key_create') }}" method="post" class="form-stack" data-no-page-loader>
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label>Název klíče<input name="label" maxlength="50" placeholder="Jan-Novak-notebook" required></label>
+      <label>Ochranná fráze <span class="optional">(volitelná)</span><input type="password" name="passphrase" minlength="8" autocomplete="new-password"></label>
+      <label>Ochranná fráze znovu<input type="password" name="passphrase_confirmation" minlength="8" autocomplete="new-password"></label>
+      <button type="submit">Vytvořit a stáhnout privátní klíč</button>
+    </form>
+    <p class="security-note"><strong>Privátní soubor se nabídne jen jednou.</strong> ConsolePi ukládá pouze veřejnou část.</p>
+  </section>
+</div>

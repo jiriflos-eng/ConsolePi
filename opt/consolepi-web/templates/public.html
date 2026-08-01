@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}{{ identity.display_name }} · ConsolePi{% endblock %}
+{% block content %}
+<section class="public-dashboard">
+  <header class="public-header">
+    <div class="brand brand-with-logo public-brand">{% include "_brand.html" %}</div>
+    <div class="public-actions"><a class="admin-link" href="{{ url_for('login') }}">Admin</a><button class="theme-toggle ghost" type="button" data-theme-toggle aria-label="Přepnout denní a noční režim"><span aria-hidden="true">◐</span><span data-theme-label>Režim</span></button></div>
+  </header>
+  <section class="public-identity"><span class="heading-illustration device" aria-hidden="true"></span><div><h1>{{ identity.display_name }}</h1><p>{{ identity.location or "Sériový konzolový server" }}</p></div></section>
+  <div class="public-stats">
+    <article><small>Stav zařízení</small><strong>V provozu</strong><span>{{ system.model }}</span></article>
+    <article><small>Management síť</small><strong>{{ network.address or "Nepřidělena" }}</strong><span>{{ network.mode|upper }} · Ethernet {{ "připojen" if network.connected else "odpojen" }}</span></article>
+    <article><small>USB konzole</small><strong id="public-connected-count">{{ ports|selectattr("connected")|list|length }} připojené</strong><span>{{ ports|length }} připravené porty</span></article>
+  </div>
+  <section class="public-consoles">
+    <h2><span class="heading-illustration console" aria-hidden="true"></span>Sériové konzole</h2>
+    <div class="public-console-list">
+      {% for row in ports %}
+      <div class="public-console-row{% if not row.connected %} is-offline{% endif %}" data-public-console-port="{{ row.port }}"><span class="cable-icon cable-visual{% if not row.connected %} disconnected{% endif %}" data-role="public-cable-icon" aria-hidden="true">{{ "" if row.connected else "⊘" }}</span><div><strong data-role="public-console-name">{{ row.display_name }}</strong><small>SSH port {{ row.port }} · <span data-role="public-serial-summary">{{ row.serial_summary }}</span></small></div><span class="badge {{ 'ready' if row.connected else 'offline' }}" data-role="public-status">{{ "Připraven" if row.connected else "Offline" }}</span></div>
+      {% endfor %}
+    </div>
+  </section>
+  <p class="public-note">Pro konfiguraci konzolí, sítě, přístupů a systému použijte tlačítko <strong>Admin</strong>.</p>
+</section>
+<script src="{{ url_for('static', filename='public-status.js') }}"></script>
+{% endblock %}

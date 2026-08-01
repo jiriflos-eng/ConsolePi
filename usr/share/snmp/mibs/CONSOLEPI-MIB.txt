@@ -1,0 +1,110 @@
+CONSOLEPI-MIB DEFINITIONS ::= BEGIN
+
+IMPORTS
+    MODULE-IDENTITY, OBJECT-TYPE, enterprises, Integer32, Gauge32, Counter64, TimeTicks
+        FROM SNMPv2-SMI
+    DisplayString
+        FROM SNMPv2-TC;
+
+consolePi MODULE-IDENTITY
+    LAST-UPDATED "20260730Z"
+    ORGANIZATION "ConsolePi"
+    CONTACT-INFO "Local ConsolePi administrator"
+    DESCRIPTION "Read-only operational metrics exported by ConsolePi."
+    ::= { enterprises 55555 }
+
+consolePiObjects OBJECT IDENTIFIER ::= { consolePi 1 }
+
+consolePiCpuPercent OBJECT-TYPE
+    SYNTAX Gauge32 (0..100)
+    MAX-ACCESS read-only
+    STATUS current
+    DESCRIPTION "Instantaneous CPU utilisation in percent."
+    ::= { consolePiObjects 1 }
+consolePiCpuTemperatureDeciC OBJECT-TYPE
+    SYNTAX Integer32
+    MAX-ACCESS read-only
+    STATUS current
+    DESCRIPTION "CPU temperature in tenths of degrees Celsius."
+    ::= { consolePiObjects 2 }
+consolePiMemoryUsedBytes OBJECT-TYPE
+    SYNTAX Counter64
+    MAX-ACCESS read-only
+    STATUS current
+    DESCRIPTION "Used operational memory in bytes."
+    ::= { consolePiObjects 3 }
+consolePiMemoryTotalBytes OBJECT-TYPE
+    SYNTAX Counter64
+    MAX-ACCESS read-only
+    STATUS current
+    DESCRIPTION "Total operational memory in bytes."
+    ::= { consolePiObjects 4 }
+consolePiMemoryUsedPercent OBJECT-TYPE
+    SYNTAX Gauge32 (0..100)
+    MAX-ACCESS read-only
+    STATUS current
+    DESCRIPTION "Used operational memory in percent."
+    ::= { consolePiObjects 5 }
+consolePiDiskUsedBytes OBJECT-TYPE
+    SYNTAX Counter64
+    MAX-ACCESS read-only
+    STATUS current
+    DESCRIPTION "Used root filesystem capacity in bytes."
+    ::= { consolePiObjects 6 }
+consolePiDiskTotalBytes OBJECT-TYPE
+    SYNTAX Counter64
+    MAX-ACCESS read-only
+    STATUS current
+    DESCRIPTION "Total root filesystem capacity in bytes."
+    ::= { consolePiObjects 7 }
+consolePiDiskUsedPercent OBJECT-TYPE
+    SYNTAX Gauge32 (0..100)
+    MAX-ACCESS read-only
+    STATUS current
+    DESCRIPTION "Used root filesystem capacity in percent."
+    ::= { consolePiObjects 8 }
+consolePiUptime OBJECT-TYPE
+    SYNTAX TimeTicks
+    MAX-ACCESS read-only
+    STATUS current
+    DESCRIPTION "ConsolePi uptime."
+    ::= { consolePiObjects 9 }
+
+consolePiServices OBJECT IDENTIFIER ::= { consolePiObjects 20 }
+consolePiServiceTable OBJECT-TYPE
+    SYNTAX SEQUENCE OF ConsolePiServiceEntry
+    MAX-ACCESS not-accessible
+    STATUS current
+    DESCRIPTION "ConsolePi service state table."
+    ::= { consolePiServices 1 }
+ConsolePiServiceEntry ::= SEQUENCE {
+    consolePiServiceName DisplayString,
+    consolePiServiceState Integer32
+}
+consolePiServiceEntry OBJECT-TYPE
+    SYNTAX ConsolePiServiceEntry
+    MAX-ACCESS not-accessible
+    STATUS current
+    DESCRIPTION "A ConsolePi service."
+    INDEX { consolePiServiceIndex }
+    ::= { consolePiServiceTable 1 }
+consolePiServiceIndex OBJECT-TYPE
+    SYNTAX Integer32 (1..255)
+    MAX-ACCESS not-accessible
+    STATUS current
+    DESCRIPTION "Stable service index."
+    ::= { consolePiServiceEntry 1 }
+consolePiServiceName OBJECT-TYPE
+    SYNTAX DisplayString
+    MAX-ACCESS read-only
+    STATUS current
+    DESCRIPTION "systemd service name."
+    ::= { consolePiServiceEntry 1 }
+consolePiServiceState OBJECT-TYPE
+    SYNTAX INTEGER { active(1), inactive(2) }
+    MAX-ACCESS read-only
+    STATUS current
+    DESCRIPTION "Current systemd service state."
+    ::= { consolePiServiceEntry 2 }
+
+END

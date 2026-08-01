@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}Instalace aktualizace · ConsolePi{% endblock %}
+{% block content %}
+<section class="release-progress-page">
+  <div class="brand brand-with-logo release-progress-brand">{% include "_brand.html" %}</div>
+  <div class="release-progress-card" data-release-progress>
+    <span class="release-progress-spinner" aria-hidden="true"></span>
+    <small>Aktualizace ConsolePi</small>
+    <h1 data-release-title>Spouštím instalaci…</h1>
+    <p data-release-message>{{ status.message }}</p>
+    <div class="release-progress-track"><span data-release-bar></span></div>
+    <p class="release-progress-hint" data-release-hint>Během instalace nevypínejte Raspberry Pi ani nezavírejte okno.</p>
+    <a class="button-link release-progress-fallback" data-release-fallback href="{{ url_for('system_page', section='maintenance') }}" hidden>Otevřít administraci</a>
+  </div>
+</section>
+<script>
+(() => {
+  const labels = {
+    verifying: ["Ověřuji aktualizaci", 22],
+    installing: ["Instaluji aktualizaci", 65],
+    rebooting: ["Restartuji ConsolePi", 92],
+    completed: ["Aktualizace dokončena", 100],
+    failed: ["Instalace se nezdařila", 100]
+  };
+  const title = document.querySelector("[data-release-title]");
+  const message = document.querySelector("[data-release-message]");
+  const bar = document.querySelector("[data-release-bar]");
+  const hint = document.querySelector("[data-release-hint]");
+  const spinner = document.querySelector(".release-progress-spinner");
+  const fallback = document.querySelector("[data-release-fallback]");
+  let retry = 0;
+  let redirectScheduled = false;
+  const render = (data) => {
+    const [heading, percent] = labels[data.status] || ["Připravuji aktualizaci", 10];
+    title.textContent = heading;
+    message.textContent = data.message || "Čekám na stav instalace…";
+    bar.style.width = `${percent}%`;
+    if (data.status === "failed") {
+      spinner.classList.add("failed");
+      hint.textContent = "Zařízení nebylo restartováno. Vraťte se do Údržby a zkontrolujte balíček.";
+      return;
+    }
+    if (data.status === "completed") {
+      spinner.classList.add("done");
+      hint.textContent = "Zařízení je opět dostupné. Otevírám webovou administraci…";
+      fallback.hidden = false;
+      if (!redirectScheduled) {
+        redirectScheduled = true;
+        setTimeout(() => window.location.replace(fallback.href), 1200);
+      }
+      return;
+    }
+  };
+  const poll = async () => {
+    try {
+      const response = await fetch("/api/release-update", {cache: "no-store", credentials: "same-origin"});
+      if (!response.ok) throw new Error("status");
+      retry = 0;
+      render(await response.json());
+    } catch (_) {
+      retry += 1;
+      message.textContent = "ConsolePi se restartuje; čekám na obnovení spojení…";
+      if (retry > 2) hint.textContent = "Nechte tuto stránku otevřenou. Po návratu zařízení se stav automaticky obnoví.";
+    }
+    setTimeout(poll, 2000);
+  };
+  poll();
+})();
+</script>
+{% endblock %}

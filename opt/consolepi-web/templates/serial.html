@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}{{ row.display_name }} · ConsolePi{% endblock %}
+{% block content %}
+{% set active_page = "overview" %}
+{% include "_navigation.html" %}
+
+{% for category, message in get_flashed_messages(with_categories=true) %}
+  <div class="notice {{ category }}">{{ message }}</div>
+{% endfor %}
+
+<div class="serial-layout">
+  <section>
+    <a class="back-link" href="{{ url_for('admin_dashboard') }}">← Zpět do přehledu konzolí</a>
+    <h1><span class="heading-illustration console" aria-hidden="true"></span>Nastavení sériového portu</h1>
+    <p class="section-lead">Změna se použije při příštím SSH připojení. Aktivní relaci nastavení nepřeruší.</p>
+    <div class="serial-facts">
+      <div><small>Stav</small><strong class="{{ "ready-text" if row.connected else "offline-text" }}">{{ "Připojen" if row.connected else "Offline" }}</strong></div>
+      <div><small>SSH připojení</small><code>{{ row.command }}</code></div>
+      <div><small>Stabilní zařízení</small><code>{{ row.device }}</code></div>
+    </div>
+    {% if "/unassigned-" not in row.device %}
+    <form action="{{ url_for('port_unassign', port=row.port) }}" method="post" class="unassign-port-form">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <button class="ghost" type="submit" {% if row.busy %}disabled{% endif %}>Odebrat přiřazení kabelu</button>
+    </form>
+    {% endif %}
+  </section>
+
+  <section class="serial-card">
+    {% if row.busy %}
+      <div class="notice error">Konzole je právě obsazena. Nastavení bude dostupné po ukončení relace.</div>
+    {% endif %}
+    <form action="{{ url_for('serial_label', port=row.port) }}" method="post" class="port-label-form">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label>Popisek připojeného zařízení
+        <input name="label" value="{{ row.label }}" maxlength="120" placeholder="Např. CORE-SW1 · rack R14">
+      </label>
+      <p class="hint">V přehledu se zobrazí tučně pouze v době, kdy je USB kabel připojený. Prázdné pole popisek odstraní.</p>
+      <button type="submit">Uložit popisek</button>
+    </form>
+    <hr class="serial-divider">
+    <form action="{{ url_for('serial_page', port=row.port) }}" method="post" class="serial-form">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label>Rychlost
+        <select name="baud" {% if row.busy %}disabled{% endif %}>
+          {% for value in ["9600", "19200", "38400", "57600", "115200"] %}
+            <option value="{{ value }}" {% if row.serial.baud == value %}selected{% endif %}>{{ value }} baud</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Datové bity
+        <select name="databits" {% if row.busy %}disabled{% endif %}>
+          {% for value in ["7", "8"] %}<option value="{{ value }}" {% if row.serial.databits == value %}selected{% endif %}>{{ value }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>Parita
+        <select name="parity" {% if row.busy %}disabled{% endif %}>
+          <option value="none" {% if row.serial.parity == "none" %}selected{% endif %}>None</option>
+          <option value="even" {% if row.serial.parity == "even" %}selected{% endif %}>Even</option>
+          <option value="odd" {% if row.serial.parity == "odd" %}selected{% endif %}>Odd</option>
+        </select>
+      </label>
+      <label>Stop bity
+        <select name="stopbits" {% if row.busy %}disabled{% endif %}>
+          {% for value in ["1", "2"] %}<option value="{{ value }}" {% if row.serial.stopbits == value %}selected{% endif %}>{{ value }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>Flow control
+        <select name="flow" {% if row.busy %}disabled{% endif %}>
+          <option value="none" {% if row.serial.flow == "none" %}selected{% endif %}>None</option>
+          <option value="hard" {% if row.serial.flow == "hard" %}selected{% endif %}>Hardware RTS/CTS</option>
+          <option value="soft" {% if row.serial.flow == "soft" %}selected{% endif %}>Software XON/XOFF</option>
+        </select>
+      </label>
+      <label>Local echo
+        <select name="local_echo" {% if row.busy %}disabled{% endif %}>
+          <option value="no" {% if row.serial.local_echo == "no" %}selected{% endif %}>Vypnuto</option>
+          <option value="yes" {% if row.serial.local_echo == "yes" %}selected{% endif %}>Zapnuto</option>
+        </select>
+      </label>
+      <button type="submit" {% if row.busy %}disabled{% endif %}>Uložit parametry</button>
+    </form>
+    <form action="{{ url_for('serial_reset', port=row.port) }}" method="post" class="reset-form">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <button class="ghost reset-button" type="submit" {% if row.busy %}disabled{% endif %}>Obnovit Cisco výchozí 9600 8N1</button>
+    </form>
+  </section>
+</div>
+{% endblock %}

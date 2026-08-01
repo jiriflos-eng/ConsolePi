@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Tovární reset · ConsolePi{% endblock %}
+{% block content %}
+<div class="system-action-page">
+  {% include "_brand.html" %}
+  <div class="system-action-icon">✓</div>
+  <h1>Tovární nastavení bylo obnoveno</h1>
+  <p>Ethernet používá DHCP a konzolové porty jsou opět nepřiřazené jako KONZOLE-1 až KONZOLE-4.</p>
+  <p>Aktuální adresa: <strong>{{ address }}</strong> · management síť: <strong>{{ network }}</strong></p>
+  <p class="hint">Pokud se adresa změnila, otevřete webovou administraci na <a href="https://{{ address }}/">https://{{ address }}/</a>.</p>
+</div>
+{% endblock %}

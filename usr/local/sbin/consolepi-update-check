@@ -1,0 +1,134 @@
+#!/usr/bin/python3
+import fcntl
+import json
+import os
+import subprocess
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+STATE = Path("/var/lib/consolepi-web/update-status.json")
+LOCK = Path("/run/lock/consolepi-update.lock")
+LOG = Path("/var/log/consolepi/updates.log")
+
+
+def now():
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def write_state(**values):
+    STATE.parent.mkdir(parents=True, exist_ok=True)
+    current = {}
+    if STATE.exists():
+        try:
+            current = json.loads(STATE.read_text())
+        except (OSError, json.JSONDecodeError):
+            current = {}
+    current.update(values)
+    temporary = STATE.with_suffix(".new")
+    temporary.write_text(json.dumps(current, indent=2) + "\n")
+    os.chmod(temporary, 0o644)
+    os.replace(temporary, STATE)
+
+
+def run_logged(*args, timeout=1800):
+    LOG.parent.mkdir(parents=True, exist_ok=True)
+    with LOG.open("a") as log:
+        log.write(f"\n[{now()}] $ {' '.join(args)}\n")
+        log.flush()
+        result = subprocess.run(
+            args,
+            text=True,
+            capture_output=True,
+            timeout=timeout,
+            check=False,
+        )
+        log.write(result.stdout or "")
+        log.write(result.stderr or "")
+        log.flush()
+        return result
+
+
+def update_error_summary(result, phase):
+    output = f"{result.stdout or ''}\n{result.stderr or ''}".lower()
+    if any(text in output for text in (
+        "could not resolve", "temporary failure resolving", "network is unreachable",
+        "network is unreachable", "name or service not known",
+    )):
+        return "Není dostupné internetové připojení nebo DNS. Zkontrolujte síť, bránu a DNS."
+    if any(text in output for text in (
+        "failed to fetch", "connection timed out", "could not connect",
+        "connection refused", "clearsigned file isn't valid",
+    )):
+        return "Repozitář není dostupný nebo odmítl spojení. Zkontrolujte internet, proxy a konfiguraci APT."
+    return (
+        "Obnovení seznamu balíčků selhalo."
+        if phase == "refresh"
+        else "Instalace systémových aktualizací selhala."
+    ) + " Podrobnosti jsou v updates.log."
+
+
+def available_packages():
+    result = subprocess.run(
+        ("apt", "list", "--upgradable"),
+        text=True,
+        capture_output=True,
+        timeout=60,
+        check=False,
+    )
+    packages = []
+    for line in result.stdout.splitlines():
+        if not line or line.startswith("Listing"):
+            continue
+        packages.append(line.split("/", 1)[0])
+    return packages
+
+
+def finish_status(error=""):
+    packages = available_packages()
+    write_state(
+        status="error" if error else ("updates" if packages else "current"),
+        checked_at=now(),
+        updates=len(packages),
+        packages=packages[:30],
+        error=error,
+        reboot_required=Path("/var/run/reboot-required").exists(),
+    )
+
+
+def main():
+    action = sys.argv[1] if len(sys.argv) == 2 else "--check"
+    if action not in {"--check", "--upgrade"}:
+        raise SystemExit("Použití: consolepi-update-check --check|--upgrade")
+    LOCK.parent.mkdir(parents=True, exist_ok=True)
+    with LOCK.open("w") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise SystemExit("Kontrola nebo instalace aktualizací již probíhá.")
+        write_state(
+            status="upgrading" if action == "--upgrade" else "checking",
+            started_at=now(),
+            error="",
+        )
+        refreshed = run_logged("apt-get", "update", timeout=900)
+        if refreshed.returncode:
+            finish_status(update_error_summary(refreshed, "refresh"))
+            raise SystemExit(refreshed.returncode)
+        if action == "--upgrade":
+            upgraded = run_logged(
+                "apt-get",
+                "-y",
+                "-o",
+                "Dpkg::Options::=--force-confold",
+                "full-upgrade",
+                timeout=3600,
+            )
+            if upgraded.returncode:
+                finish_status(update_error_summary(upgraded, "upgrade"))
+                raise SystemExit(upgraded.returncode)
+        finish_status()
+
+
+if __name__ == "__main__":
+    main()

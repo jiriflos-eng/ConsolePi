@@ -1,0 +1,10 @@
+[Unit]
+Description=ConsolePi automatic package update check
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/consolepi-update-check --check
+Nice=10
+IOSchedulingClass=idle

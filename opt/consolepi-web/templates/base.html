@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="cs">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#12302e">
+  <script>try{const t=localStorage.getItem("consolepi-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+  <title>{% block title %}ConsolePi{% endblock %}</title>
+  <link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}" type="image/svg+xml">
+  <link rel="stylesheet" href="{{ url_for('static', filename='consolepi.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='access-sources.css') }}">
+  <script defer src="{{ url_for('static', filename='theme.js') }}"></script>
+  <script defer src="{{ url_for('static', filename='page-loader.js') }}"></script>
+</head>
+<body>
+  <main class="shell">
+    {% block content %}{% endblock %}
+  </main>
+  <div class="page-loader" aria-hidden="true" aria-live="polite">
+    <div class="page-loader-card" role="status">
+      <span class="page-loader-spinner" aria-hidden="true"></span>
+      <span class="page-loader-text">Načítám stránku…</span>
+    </div>
+  </div>
+</body>
+</html>

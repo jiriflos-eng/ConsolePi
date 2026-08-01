@@ -1,0 +1,11 @@
+# Release signing material must remain only on the administrator workstation.
+release-signing-private.pem
+authorized_keys
+*.img
+*.img.xz
+*.sha256
+*.cpiupdate
+*.map
+dist-public/
+public-release/
+__pycache__/

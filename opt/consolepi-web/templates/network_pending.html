@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Potvrzení sítě · ConsolePi{% endblock %}
+{% block content %}
+<section class="login-card pending">
+  <div class="brand"><span class="brand-icon">↻</span><div><strong>Síť byla změněna</strong><small>Pojistka je aktivní 120 sekund</small></div></div>
+  <p>Otevřete web na nové adrese <a href="http://{{ address }}/">http://{{ address }}/</a> a nové nastavení potvrďte.</p>
+  <form action="/network/confirm" method="post">
+    <input type="hidden" name="csrf" value="{{ session.csrf }}">
+    <input type="hidden" name="token" value="{{ token }}">
+    <button type="submit">Potvrdit nové nastavení</button>
+  </form>
+</section>
+{% endblock %}
+

@@ -1,0 +1,25 @@
+<header class="global-header">
+  <style>
+    .health-updates { color:#906300; font-weight:700; text-decoration:none; padding:5px 9px; border-radius:999px; background:#fff4d6; border:1px solid #efd28a; transition:transform .15s ease, background .15s ease; }
+    .health-updates span { background:#d39100; }
+    .health-updates:hover { background:#ffedbd; transform:translateY(-1px); }
+    html[data-theme="dark"] .health-updates { color:#ffd778; background:#4d3b14; border-color:#806323; }
+    html[data-theme="dark"] .health-updates:hover { background:#5d4819; }
+  </style>
+  <a class="brand brand-with-logo" href="{{ url_for('admin_dashboard') }}" aria-label="ConsolePi – přehled">
+    {% include "_brand.html" %}
+  </a>
+  {% if show_health|default(false) and header_updates.status == "updates" and header_updates.updates|int > 0 %}
+    <a class="health health-updates" href="{{ url_for('system_page', section='maintenance') }}" title="Otevřít systémové aktualizace">
+      <span></span>{{ header_updates.updates }} {{ "systémová aktualizace" if header_updates.updates|int == 1 else "systémové aktualizace" }}
+    </a>
+  {% endif %}
+  <div class="admin-actions"><button class="theme-toggle ghost" type="button" data-theme-toggle aria-label="Přepnout denní a noční režim" title="Denní/noční režim"><span aria-hidden="true">◐</span><span data-theme-label>Režim</span></button><form action="{{ url_for('logout') }}" method="post"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="ghost">Odhlásit</button></form></div>
+</header>
+<nav class="global-nav" aria-label="Hlavní navigace">
+  <a class="tab{% if active_page|default('overview') == 'overview' %} active{% endif %}" data-tab="overview" href="{{ url_for('admin_dashboard') }}">Přehled</a>
+  <a class="tab{% if active_page == 'network' %} active{% endif %}" data-tab="network" href="{{ url_for('admin_dashboard', tab='network') }}">Síť</a>
+  <a class="tab{% if active_page == 'authentication' %} active{% endif %}" href="{{ url_for('authentication_page') }}">Autentizace</a>
+  <a class="tab{% if active_page == 'system' %} active{% endif %}" href="{{ url_for('system_page') }}">Systém</a>
+  <a class="tab{% if active_page == 'help' %} active{% endif %}" href="{{ url_for('help_page') }}">Nápověda</a>
+</nav>

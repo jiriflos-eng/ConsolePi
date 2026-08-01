@@ -1,0 +1,162 @@
+#!/bin/sh
+set -u
+
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+export PATH
+
+PORTS=/etc/consolepi/ports.conf
+SERIAL_CONFIG=/etc/consolepi/serial.conf
+AUTH_CONFIG=/etc/consolepi/auth.conf
+IDENTITY_CONFIG=/etc/consolepi/identity.json
+LABELS_CONFIG=/etc/consolepi/labels.json
+
+[ -t 1 ] || exit 0
+[ -r "$PORTS" ] || exit 0
+[ -r "$SERIAL_CONFIG" ] || exit 0
+
+ESC=$(printf '\033')
+RESET="${ESC}[0m"
+BOLD="${ESC}[1m"
+CYAN="${ESC}[36m"
+GREEN="${ESC}[32m"
+YELLOW="${ESC}[33m"
+RED="${ESC}[31m"
+DIM="${ESC}[2m"
+
+# printf šířku řetězce počítá v bajtech. To posune pravý okraj rámečku i
+# sloupce při názvech s diakritikou. Následující pomocné funkce pracují se
+# skutečnou šířkou znaků zobrazovanou v terminálu.
+fit_cells()
+{
+    python3 - "$1" "$2" <<'PY'
+import sys
+import unicodedata
+
+limit = int(sys.argv[1])
+text = sys.argv[2].replace("\n", " ").replace("\r", " ")
+out = []
+width = 0
+for char in text:
+    cells = 0 if unicodedata.combining(char) else (2 if unicodedata.east_asian_width(char) in "WF" else 1)
+    if width + cells > limit:
+        break
+    out.append(char)
+    width += cells
+print("".join(out) + " " * (limit - width), end="")
+PY
+}
+
+box_line()
+{
+    python3 - "$1" <<'PY'
+import re
+import sys
+import unicodedata
+
+text = sys.argv[1].replace("\n", " ").replace("\r", " ")
+plain = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", text)
+width = sum(0 if unicodedata.combining(c) else (2 if unicodedata.east_asian_width(c) in "WF" else 1) for c in plain)
+print(text + " " * max(0, 78 - width), end="")
+PY
+}
+
+IP_ADDRESS=$(hostname -I 2>/dev/null | awk '{print $1}')
+[ -n "$IP_ADDRESS" ] || IP_ADDRESS=$(hostname)
+HOSTNAME=$(hostname)
+DISPLAY_NAME=$(python3 -c '
+import json
+import sys
+from pathlib import Path
+path = Path(sys.argv[1])
+try:
+    print(str(json.loads(path.read_text()).get("display_name") or "ConsolePi").strip())
+except (OSError, ValueError):
+    print("ConsolePi")
+' "$IDENTITY_CONFIG" 2>/dev/null)
+[ -n "$DISPLAY_NAME" ] || DISPLAY_NAME=ConsolePi
+DISPLAY_NAME=$(fit_cells 64 "$DISPLAY_NAME")
+
+console_title()
+{
+    port=$1
+    default_name=$2
+    device=$3
+    # Odpojený kabel se vždy prezentuje neutrálním názvem KONZOLE-x.
+    [ -e "$device" ] || { printf '%s\n' "$default_name"; return; }
+    python3 -c '
+import json
+import sys
+try:
+    labels = json.load(open(sys.argv[1], encoding="utf-8"))
+    print(str(labels.get(sys.argv[2]) or sys.argv[3]).strip())
+except (OSError, ValueError, TypeError):
+    print(sys.argv[3])
+' "$LABELS_CONFIG" "$port" "$default_name" 2>/dev/null
+}
+
+printf '\n%s%s╭──────────────────────────────────────────────────────────────────────────────╮%s\n' "$BOLD" "$CYAN" "$RESET"
+printf '%s%s│%s│%s\n' "$BOLD" "$CYAN" "$(box_line "  ConsolePi · $DISPLAY_NAME")" "$RESET"
+printf '%s%s╰──────────────────────────────────────────────────────────────────────────────╯%s\n' "$BOLD" "$CYAN" "$RESET"
+printf '  %sNazev zarizeni:%s      %s\n' "$BOLD" "$RESET" "$DISPLAY_NAME"
+printf '  %sHostname:%s             %s\n' "$BOLD" "$RESET" "$HOSTNAME"
+printf '  %sWebova administrace:%s %shttps://%s/%s\n' "$BOLD" "$RESET" "$CYAN" "$IP_ADDRESS" "$RESET"
+printf '  %sAdministrativni SSH:%s  consolepi@%s:22\n\n' "$BOLD" "$RESET" "$IP_ADDRESS"
+AUTH_MODE=local_key
+[ -r "$AUTH_CONFIG" ] && . "$AUTH_CONFIG"
+case "$AUTH_MODE" in
+    radius) AUTH_LABEL='RADIUS · Keyboard Interactive' ;;
+    local_password) AUTH_LABEL='lokalni uzivatel + heslo' ;;
+    *) AUTH_LABEL='lokalni uzivatel + SSH klic' ;;
+esac
+printf '  %sAutentizace konzoli:%s %s\n\n' "$BOLD" "$RESET" "$AUTH_LABEL"
+
+printf '%s%-6s %-16s %-11s %-9s %-27s%s\n' "$BOLD" "PORT" "KONZOLE" "STAV" "SERIE" "STABILNI ID" "$RESET"
+printf '%s%-6s %-16s %-11s %-9s %-27s%s\n' "$DIM" "─────" "───────────────" "──────────" "────────" "──────────────────────────" "$RESET"
+
+awk -F '|' '
+    /^[[:space:]]*#/ || /^[[:space:]]*$/ { next }
+    NF == 3 { print $1 "|" $2 "|" $3 }
+' "$PORTS" |
+while IFS='|' read -r port name device; do
+    if [ -e "$device" ]; then
+        if lslocks -n -o PATH 2>/dev/null | grep -Fqx "/run/lock/consolepi/$name.lock"; then
+            status_color=$YELLOW
+            status_text=OBSAZENO
+        else
+            status_color=$GREEN
+            status_text=PRIPRAVENO
+        fi
+    else
+        status_color=$RED
+        status_text=OFFLINE
+    fi
+
+    stable_id=$(basename "$device")
+    case "$stable_id" in
+        usb-*) stable_id=${stable_id#usb-} ;;
+    esac
+    stable_id=$(fit_cells 27 "$stable_id")
+
+    serial_line=$(awk -F '|' -v wanted="$port" '$1 == wanted { print; exit }' "$SERIAL_CONFIG")
+    OLD_IFS=$IFS
+    IFS='|'
+    set -- $serial_line
+    IFS=$OLD_IFS
+    serial_summary="${2:-9600}-${3:-8}$(printf '%s' "${4:-none}" | cut -c1 | tr 'neo' 'NEO')${5:-1}"
+
+    name=$(console_title "$port" "$name" "$device")
+    [ -n "$name" ] || name=KONZOLE-$port
+
+    printf '%s %s ' "$(fit_cells 6 "$port")" "$(fit_cells 16 "$name")"
+    printf '%s%s%s ' "$status_color" "$(fit_cells 11 "$status_text")" "$RESET"
+    printf '%s %s\n' "$(fit_cells 9 "$serial_summary")" "$stable_id"
+done
+
+printf '\n  %sPripojeni ke konzoli:%s ssh -tt -p %sPORT%s console@%s\n' "$BOLD" "$RESET" "$CYAN" "$RESET" "$IP_ADDRESS"
+case "$AUTH_MODE" in
+    radius) SSH_METHOD='Keyboard Interactive' ;;
+    local_password) SSH_METHOD='Password' ;;
+    *) SSH_METHOD='PublicKey' ;;
+esac
+printf '  %sSecureCRT:%s SSH2 · user %sconsole%s · %s · Xterm/VT100\n' "$BOLD" "$RESET" "$CYAN" "$RESET" "$SSH_METHOD"
+printf '  %sDiagnostika:%s sudo consolepi-diagnose\n\n' "$BOLD" "$RESET"
