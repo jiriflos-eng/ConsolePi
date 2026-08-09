@@ -37,13 +37,19 @@ case "$state" in
     pending|claim_pending|key_generation_pending|complete) ;;
     *) fail 'generic-image stav chybí nebo je poškozený' ;;
 esac
-python3 - "$IMAGER_FAILURE" "$IMAGER_SUCCESS" <<'PY' ||
-    fail 'Imager success/failure stav je chybějící, poškozený nebo odmítnutý'
+if [ "$state" = pending ]; then
+    /usr/local/libexec/consolepi-imager-postvalidate ||
+        fail 'výsledek Raspberry Pi Imager customizace byl odmítnut'
+fi
+if ! python3 - "$IMAGER_FAILURE" "$IMAGER_SUCCESS" <<'PY'
 import sys
 sys.path.insert(0, "/usr/local/lib")
 from consolepi_imager_security import validate_imager_markers
 validate_imager_markers(sys.argv[1], sys.argv[2])
 PY
+then
+    fail 'Imager success/failure stav je chybějící, poškozený nebo odmítnutý'
+fi
 
 key=$(python3 - "$state" /etc/passwd /etc/shadow /home/consolepi <<'PY'
 import sys
@@ -69,7 +75,12 @@ unset key
 
 # The distributable image contains none of these private values. Generate a
 # fresh identity only after the administrator key has passed validation.
-ssh-keygen -A >/dev/null
+python3 - <<'PY' || fail 'nelze bezpečně vytvořit a ověřit SSH host keys'
+import sys
+sys.path.insert(0, "/usr/local/lib")
+from consolepi_imager_security import provision_host_keys
+provision_host_keys()
+PY
 install -d -o root -g root -m 0755 "$TLS_DIR"
 tls_ip=$(hostname -I 2>/dev/null | awk '{print $1}')
 tls_san="DNS:$(hostname),DNS:$(hostname).local"

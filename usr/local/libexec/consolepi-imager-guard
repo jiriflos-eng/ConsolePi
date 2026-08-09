@@ -1,0 +1,64 @@
+#!/usr/bin/python3
+"""Generic-only guards for Raspberry Pi Imager's supported vendor entrypoints."""
+import os
+import pwd
+import sys
+from pathlib import Path
+
+sys.path.insert(0, "/usr/local/lib")
+from consolepi_imager_security import (
+    FAILURE_MARKER, SSH_OPERATION, USER_OPERATION, USER_OPERATION_CONTENT,
+    ImagerImportError, generic_guard_active, generic_pending, install_authorized_key, mark_failure,
+    record_operation, validate_ssh_request, validate_userconf_request,
+)
+
+VENDORS = {
+    "ssh": "/usr/lib/raspberrypi-sys-mods/imager_custom.consolepi-vendor",
+    "user": "/usr/lib/userconf-pi/userconf.consolepi-vendor",
+}
+
+
+def locked_account():
+    account = pwd.getpwnam("consolepi")
+    matches = [line.split(":", 2) for line in Path("/etc/shadow").read_text().splitlines()
+               if line.startswith("consolepi:")]
+    if len(matches) != 1:
+        raise ImagerImportError("consolepi shadow entry is missing or ambiguous")
+    shadow = matches[0][1]
+    if (account.pw_uid, account.pw_gid, account.pw_dir, account.pw_shell) != (
+            1000, 1000, "/home/consolepi", "/bin/bash"):
+        raise ImagerImportError("consolepi account identity changed")
+    if not shadow.startswith(("!", "*")):
+        raise ImagerImportError("consolepi password is not locked")
+    return account
+
+
+def main():
+    if os.geteuid() != 0 or len(sys.argv) < 2 or sys.argv[1] not in VENDORS:
+        raise SystemExit(126)
+    mode, arguments = sys.argv[1], sys.argv[2:]
+    if not generic_guard_active():
+        os.execv(VENDORS[mode], [VENDORS[mode], *arguments])
+    try:
+        if not generic_pending():
+            raise ImagerImportError("generic Imager guard state is missing, malformed, or no longer pending")
+        account = locked_account()
+        if mode == "user":
+            validate_userconf_request(arguments)
+            record_operation(USER_OPERATION, USER_OPERATION_CONTENT)
+            locked_account()
+            return
+        key = validate_ssh_request(arguments)
+        install_authorized_key(account.pw_dir, account.pw_uid, account.pw_gid, key)
+        record_operation(SSH_OPERATION, (key + "\n").encode())
+        locked_account()
+    except Exception as exc:
+        try:
+            mark_failure(FAILURE_MARKER, str(exc))
+        finally:
+            print(f"ConsolePi rejected Raspberry Pi Imager customization: {exc}", file=sys.stderr)
+        raise SystemExit(1)
+
+
+if __name__ == "__main__":
+    main()

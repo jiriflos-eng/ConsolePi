@@ -154,8 +154,10 @@ for target in \
     /usr/local/sbin/consolepi-prepare-generic-image \
     /usr/local/lib/consolepi_firstboot_security.py \
     /usr/local/lib/consolepi_imager_security.py \
-    /usr/local/libexec/consolepi-imager-firstrun \
-    /usr/local/libexec/consolepi-imager-import \
+    /usr/local/libexec/consolepi-imager-guard \
+    /usr/local/libexec/consolepi-imager-custom-guard \
+    /usr/local/libexec/consolepi-imager-userconf-guard \
+    /usr/local/libexec/consolepi-imager-postvalidate \
     /usr/local/sbin/consolepi-snmp-pass-persist \
     /usr/local/sbin/consolepi-release \
     /etc/profile.d/consolepi-status.sh \
@@ -253,8 +255,10 @@ install -m 0755 "$ROOT/usr/local/sbin/consolepi-generic-image-firstboot" /usr/lo
 install -m 0755 "$ROOT/usr/local/sbin/consolepi-prepare-generic-image" /usr/local/sbin/consolepi-prepare-generic-image
 install -m 0644 "$ROOT/usr/local/lib/consolepi_firstboot_security.py" /usr/local/lib/consolepi_firstboot_security.py
 install -m 0644 "$ROOT/usr/local/lib/consolepi_imager_security.py" /usr/local/lib/consolepi_imager_security.py
-install -m 0755 "$ROOT/usr/local/libexec/consolepi-imager-firstrun" /usr/local/libexec/consolepi-imager-firstrun
-install -m 0755 "$ROOT/usr/local/libexec/consolepi-imager-import" /usr/local/libexec/consolepi-imager-import
+install -m 0755 "$ROOT/usr/local/libexec/consolepi-imager-guard" /usr/local/libexec/consolepi-imager-guard
+install -m 0755 "$ROOT/usr/local/libexec/consolepi-imager-custom-guard" /usr/local/libexec/consolepi-imager-custom-guard
+install -m 0755 "$ROOT/usr/local/libexec/consolepi-imager-userconf-guard" /usr/local/libexec/consolepi-imager-userconf-guard
+install -m 0755 "$ROOT/usr/local/libexec/consolepi-imager-postvalidate" /usr/local/libexec/consolepi-imager-postvalidate
 install -m 0755 "$ROOT/usr/local/sbin/consolepi-snmp-pass-persist" /usr/local/sbin/consolepi-snmp-pass-persist
 install -m 0755 "$ROOT/usr/local/sbin/consolepi-release" /usr/local/sbin/consolepi-release
 install -m 0755 "$ROOT/usr/local/sbin/consolepi-release-runner" /usr/local/sbin/consolepi-release-runner

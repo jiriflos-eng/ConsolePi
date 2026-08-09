@@ -8,8 +8,12 @@ umask 077
 
 STATE_DIR=/etc/consolepi
 RECOVERY=$STATE_DIR/generic-image-recovery.txt
-IMAGER_FIRSTRUN=/usr/local/libexec/consolepi-imager-firstrun
-IMAGER_IMPORT=/usr/local/libexec/consolepi-imager-import
+IMAGER_GUARD=/usr/local/libexec/consolepi-imager-guard
+IMAGER_CUSTOM_GUARD=/usr/local/libexec/consolepi-imager-custom-guard
+IMAGER_USER_GUARD=/usr/local/libexec/consolepi-imager-userconf-guard
+IMAGER_POSTVALIDATE=/usr/local/libexec/consolepi-imager-postvalidate
+VENDOR_CUSTOM=/usr/lib/raspberrypi-sys-mods/imager_custom
+VENDOR_USERCONF=/usr/lib/userconf-pi/userconf
 destructive=no
 prep_dir=
 boot_mount=
@@ -36,8 +40,25 @@ id console >/dev/null 2>&1 || fail 'chybí účet console'
 getent group consolepi-web >/dev/null 2>&1 || fail 'chybí skupina consolepi-web'
 [ -x /usr/local/sbin/consolepi-generic-image-firstboot ] || fail 'chybí first-boot program'
 [ -f /etc/systemd/system/consolepi-generic-image-firstboot.service ] || fail 'chybí first-boot unit'
-[ -x "$IMAGER_FIRSTRUN" ] || fail 'chybí generic Imager firstrun bridge'
-[ -x "$IMAGER_IMPORT" ] || fail 'chybí generic Imager importer'
+for program in "$IMAGER_GUARD" "$IMAGER_CUSTOM_GUARD" "$IMAGER_USER_GUARD" "$IMAGER_POSTVALIDATE"; do
+    [ -x "$program" ] || fail "chybí generic Imager guard $program"
+    [ -f "$program" ] && [ ! -L "$program" ] || fail "Imager guard není bezpečný soubor: $program"
+    [ "$(stat -c '%u:%g:%h' "$program")" = 0:0:1 ] || fail "Imager guard nemá bezpečná metadata: $program"
+    mode=$(stat -c '%a' "$program")
+    [ $((0$mode & 0022)) -eq 0 ] || fail "Imager guard je zapisovatelný mimo root: $program"
+done
+[ -f "$VENDOR_CUSTOM" ] && [ ! -L "$VENDOR_CUSTOM" ] || fail 'vendor imager_custom chybí nebo není bezpečný soubor'
+[ -f "$VENDOR_USERCONF" ] && [ ! -L "$VENDOR_USERCONF" ] || fail 'vendor userconf chybí nebo není bezpečný soubor'
+[ "$(stat -c '%u:%g' "$VENDOR_CUSTOM")" = 0:0 ] || fail 'vendor imager_custom není root:root'
+[ "$(stat -c '%u:%g' "$VENDOR_USERCONF")" = 0:0 ] || fail 'vendor userconf není root:root'
+[ "$(stat -c '%h' "$VENDOR_CUSTOM")" = 1 ] || fail 'vendor imager_custom má neočekávaný hardlink'
+[ "$(stat -c '%h' "$VENDOR_USERCONF")" = 1 ] || fail 'vendor userconf má neočekávaný hardlink'
+for program in "$VENDOR_CUSTOM" "$VENDOR_USERCONF"; do
+    mode=$(stat -c '%a' "$program")
+    [ $((0$mode & 0022)) -eq 0 ] || fail "vendor Imager entrypoint je zapisovatelný mimo root: $program"
+done
+[ ! -e "$VENDOR_CUSTOM.consolepi-vendor" ] && [ ! -L "$VENDOR_CUSTOM.consolepi-vendor" ] || fail 'vendor imager_custom backup už existuje'
+[ ! -e "$VENDOR_USERCONF.consolepi-vendor" ] && [ ! -L "$VENDOR_USERCONF.consolepi-vendor" ] || fail 'vendor userconf backup už existuje'
 [ -f /usr/local/lib/consolepi_imager_security.py ] || fail 'chybí Imager security modul'
 [ -w /etc ] && [ -w "$STATE_DIR" ] && [ -w /home/consolepi ] || fail 'potřebné filesystémy nejsou zapisovatelné'
 [ "$(df -Pk "$STATE_DIR" | awk 'NR==2 {print $4}')" -ge 10240 ] || fail 'je potřeba alespoň 10 MiB volného místa'
@@ -68,15 +89,16 @@ sys.path.insert(0, "/usr/local/lib")
 from consolepi_imager_security import validate_legacy_cmdline
 validate_legacy_cmdline(sys.argv[1])
 PY
-python3 - "$IMAGER_IMPORT" <<'PY' || fail 'Imager importer není syntakticky platný'
+python3 - "$IMAGER_GUARD" "$IMAGER_POSTVALIDATE" <<'PY' || fail 'Imager guard není syntakticky platný'
 import ast, pathlib, sys
-ast.parse(pathlib.Path(sys.argv[1]).read_text())
+for path in sys.argv[1:]: ast.parse(pathlib.Path(path).read_text())
 PY
 python3 - /usr/local/lib/consolepi_imager_security.py <<'PY' || fail 'Imager security modul není syntakticky platný'
 import ast, pathlib, sys
 ast.parse(pathlib.Path(sys.argv[1]).read_text())
 PY
-sh -n "$IMAGER_FIRSTRUN" || fail 'Imager firstrun bridge není syntakticky platný'
+sh -n "$IMAGER_CUSTOM_GUARD" || fail 'Imager custom guard není syntakticky platný'
+sh -n "$IMAGER_USER_GUARD" || fail 'Imager userconf guard není syntakticky platný'
 
 unexpected_accounts=$(python3 - <<'PY'
 import sys
@@ -148,8 +170,9 @@ ConsolePi generic-image recovery (pouze z lokální konzole)
    consolepi-generic-image-firstboot.service, spusťte systemctl daemon-reload
    a služby povolte teprve po ověření SSH/TLS/web konfigurace.
 EOF
-cp "$IMAGER_FIRSTRUN" "$prep_dir/imager-firstrun"
-printf '%s\n' 'generic-image-systemd-v1' >"$prep_dir/imager-systemd-compat"
+cp "$IMAGER_CUSTOM_GUARD" "$prep_dir/imager-custom-guard"
+cp "$IMAGER_USER_GUARD" "$prep_dir/imager-userconf-guard"
+printf '%s\n' 'generic-image-systemd-v2' >"$prep_dir/imager-systemd-compat"
 printf '%s\n' "$boot_mount" >"$prep_dir/imager-boot-mount"
 printf '%s\n' uninitialized >"$prep_dir/machine-id"
 
@@ -179,13 +202,23 @@ destructive=yes
 install -m 0600 "$prep_dir/recovery.txt" "$RECOVERY"
 systemctl disable --now ssh nginx consolepi-web consolepi-port-monitor \
     consolepi-update-check.timer snmpd lldpd >/dev/null 2>&1 || true
+# Generic firstboot owns host-key creation. Prevent the vendor first-boot unit
+# from racing it; standard installations never execute this sanitization path.
+if systemctl list-unit-files regenerate_ssh_host_keys.service --no-legend 2>/dev/null | grep -q .; then
+    systemctl disable regenerate_ssh_host_keys.service >/dev/null ||
+        fail 'nelze deaktivovat vendor regeneraci SSH host keys'
+    if systemctl is-enabled regenerate_ssh_host_keys.service >/dev/null 2>&1; then
+        fail 'vendor regenerace SSH host keys zůstala enabled'
+    fi
+fi
 
 # Remove password hashes, then lock both accounts.
 passwd -d consolepi >/dev/null
 passwd -l consolepi >/dev/null
 passwd -d console >/dev/null 2>&1 || true
 passwd -l console >/dev/null 2>&1 || true
-rm -f "$STATE_DIR/generic-imager-customization-failed" "$STATE_DIR/generic-imager-customization-imported"
+rm -f "$STATE_DIR/generic-imager-customization-failed" "$STATE_DIR/generic-imager-customization-imported" \
+    "$STATE_DIR/.generic-imager-ssh-operation" "$STATE_DIR/.generic-imager-user-operation"
 
 # No pre-existing login key may survive in a generic image.
 find /root /home -xdev -type f -path '*/.ssh/*' -delete 2>/dev/null || true
@@ -208,6 +241,7 @@ find /etc/NetworkManager/system-connections -mindepth 1 -delete 2>/dev/null || t
 install -m 0600 "$prep_dir/wired-generic.nmconnection" \
     "/etc/NetworkManager/system-connections/Wired connection 1.nmconnection"
 find /etc/wpa_supplicant /etc/openvpn /etc/wireguard -mindepth 1 -delete 2>/dev/null || true
+rm -rf /var/lib/rpi-connect /root/.config/rpi-connect /home/consolepi/.config/rpi-connect
 rm -f /etc/ppp/chap-secrets /etc/ppp/pap-secrets
 find /etc/ppp/peers -mindepth 1 -delete 2>/dev/null || true
 find /var/lib/dhcp /var/lib/NetworkManager -type f -delete 2>/dev/null || true
@@ -221,11 +255,15 @@ clear_directory("/var/lib/cloud")
 sanitize_boot_partition(sys.argv[1])
 PY
 
-# Generic-only Raspberry Pi Imager 2.x compatibility. Imager writes to the FAT
-# root but its systemd format executes and cleans up the legacy /boot paths.
-# The root-resident bridge mounts FAT and invokes only the ConsolePi-owned parser.
-install -m 0755 "$prep_dir/imager-firstrun" /boot/.firstrun.sh.consolepi-new
-mv -f /boot/.firstrun.sh.consolepi-new /boot/firstrun.sh
+# Generic-only Raspberry Pi Imager 2.x compatibility. Imager owns and executes
+# the FAT firstrun payload. These guards constrain its two vendor entrypoints;
+# firstboot validates the resulting transaction before creating success.
+mv "$VENDOR_CUSTOM" "$VENDOR_CUSTOM.consolepi-vendor"
+install -o root -g root -m 0755 "$prep_dir/imager-custom-guard" "$VENDOR_CUSTOM.new"
+mv -f "$VENDOR_CUSTOM.new" "$VENDOR_CUSTOM"
+mv "$VENDOR_USERCONF" "$VENDOR_USERCONF.consolepi-vendor"
+install -o root -g root -m 0755 "$prep_dir/imager-userconf-guard" "$VENDOR_USERCONF.new"
+mv -f "$VENDOR_USERCONF.new" "$VENDOR_USERCONF"
 boot_relative=${boot_mount#/boot/}
 python3 - /boot/cmdline.txt <<'PY'
 import sys

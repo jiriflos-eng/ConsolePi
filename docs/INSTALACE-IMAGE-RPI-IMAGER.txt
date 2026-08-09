@@ -153,15 +153,16 @@ provozovaném ConsolePi jej nespouštějte.
    webová, RADIUS, SNMPv3, proxy a síťová tajemství, zálohy, historie, logy,
    machine-id, DHCP lease, cloud-init runtime stav a všechny NoCloud seedy
    z firmware partition. Integrace, identita, firewall allowlist a ethernet
-   se resetují do neaktivního generického stavu s DHCP. Generic-only Imager
-   bridge předá FAT payload ConsolePi importeru. Importer payload nikdy
-   nespouští: přijme pouze přesnou key-only šablonu Imageru 2.0.10, vyjme z ní
-   jediný Ed25519 veřejný klíč a bezpečně jej uloží účtu `consolepi` s UID 1000.
+   se resetují do neaktivního generického stavu s DHCP. Generic-only guardy
+   chrání skutečné vendor entrypointy, které volá FAT payload Imageru. Povolí
+   pouze `enable_ssh -k` s jediným Ed25519 veřejným klíčem a beze změny jej
+   uloží účtu `consolepi`; userconf přijme jen účet `consolepi` s prázdným
+   password argumentem. Ostatní operace vytvoří persistentní failure marker.
 3. Ihned poté zařízení vypněte zobrazeným příkazem. Sanitizovaný master už
    znovu nespouštějte před pořízením image vypnuté karty.
 4. Image před zveřejněním připojte jen pro čtení a ověřte, že neobsahuje
    žádný authorized_keys, ssh_host_* ani consolepi.key a že /etc/machine-id
-   je prázdný.
+   má přesně first-boot hodnotu `uninitialized`.
 
 Při prvním startu nejprve doběhne customizace Raspberry Pi Imageru. Služba
 ConsolePi potom přijme právě jeden validní veřejný klíč ssh-ed25519 z účtu
@@ -172,8 +173,11 @@ jednorázový token čitelný pouze účtem consolepi přes ověřené SSH spoje
 V OS Customisation smí být zapnuto pouze SSH s public-key authentication a
 právě jedním Ed25519 klíčem. Username/password, hostname, Wi-Fi, locale,
 timezone, keyboard, Raspberry Pi Connect a všechny další volby jsou
-nepodporované. Importer jakoukoli odchylku persistentně označí jako selhání,
-odstraní FAT payload a first-boot služby SSH ani web neuvolní.
+nepodporované. Po dokončení payloadu ConsolePi samostatně ověří účet, locked
+password, klíč, login-capable účty, hostname, síťový profil, machine-id,
+odstranění FAT payloadu a `systemd.run`. Teprve potom atomicky vytvoří success
+marker; jakoukoli odchylku persistentně označí jako selhání a SSH ani web
+neuvolní.
 Stav `generic-imager-customization-failed` se restartem nemaže. Takovou kartu
 nepřipojujte do sítě; z lokální konzole ověřte příčinu a připravte ji znovu
 od čistého, úspěšně sanitizovaného masteru se správnou key-only customizací.

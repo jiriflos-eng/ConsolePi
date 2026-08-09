@@ -23,7 +23,8 @@ for file in \
     "$ROOT/usr/local/sbin/consolepi-admin-menu" \
     "$ROOT/usr/local/sbin/consolepi-generic-image-firstboot" \
     "$ROOT/usr/local/sbin/consolepi-prepare-generic-image" \
-    "$ROOT/usr/local/libexec/consolepi-imager-firstrun" \
+    "$ROOT/usr/local/libexec/consolepi-imager-custom-guard" \
+    "$ROOT/usr/local/libexec/consolepi-imager-userconf-guard" \
     "$ROOT/etc/profile.d/consolepi-status.sh" \
     "$ROOT/bootstrap-install.sh" \
     "$ROOT/tools/build-install-bundle.sh" \
@@ -56,9 +57,10 @@ python3 -c 'import ast, pathlib; [ast.parse(pathlib.Path(p).read_text()) for p i
     bad "Python syntax"
 
 python3 -c 'import ast, pathlib; [ast.parse(pathlib.Path(p).read_text()) for p in (
-    "'"$ROOT"'/usr/local/libexec/consolepi-imager-import",
+    "'"$ROOT"'/usr/local/libexec/consolepi-imager-guard",
+    "'"$ROOT"'/usr/local/libexec/consolepi-imager-postvalidate",
     "'"$ROOT"'/usr/local/lib/consolepi_imager_security.py"
-)]' && ok "strict Imager importer Python syntax" || bad "strict Imager importer Python syntax"
+)]' && ok "strict Imager guard Python syntax" || bad "strict Imager guard Python syntax"
 
 python3 "$ROOT/tests/generic_behavior.py" || bad "generic image behavioral security tests"
 if [ "${CONSOLEPI_SKIP_ARCHIVE_TEST:-0}" != 1 ]; then
@@ -147,9 +149,11 @@ grep -q '^Match User console LocalPort 2201$' "$ROOT/etc/ssh/sshd_config.d/40-co
     grep -q 'sanitize_boot_partition' "$ROOT/usr/local/sbin/consolepi-prepare-generic-image" &&
     grep -q 'clear_directory("/var/lib/cloud")' "$ROOT/usr/local/sbin/consolepi-prepare-generic-image" &&
     grep -q 'imager-systemd-compat' "$ROOT/usr/local/sbin/consolepi-prepare-generic-image" &&
-    grep -q 'expected_imager_2010_payload' "$ROOT/usr/local/lib/consolepi_imager_security.py" &&
+    grep -q 'generic_pending' "$ROOT/usr/local/lib/consolepi_imager_security.py" &&
+    grep -q 'validate_userconf_request' "$ROOT/usr/local/libexec/consolepi-imager-guard" &&
+    grep -q 'consolepi-imager-postvalidate' "$ROOT/usr/local/sbin/consolepi-generic-image-firstboot" &&
     grep -q 'generic-imager-customization-failed' "$ROOT/usr/local/sbin/consolepi-generic-image-firstboot" &&
-    ! grep -Eq '(sh|bash) .*firstrun\.sh' "$ROOT/usr/local/libexec/consolepi-imager-firstrun" &&
+    ! grep -Eq 'consolepi-imager-(firstrun|import)' "$ROOT/install.sh" &&
     grep -q 'NEZAPÍNEJTE.*Set username and password' "$ROOT/docs/INSTALACE-IMAGE-RPI-IMAGER.txt" &&
     ! grep -q 'Use password authentication' "$ROOT/docs/INSTALACE-IMAGE-RPI-IMAGER.txt" &&
     ok "generic image key-only first boot" ||

@@ -241,69 +241,65 @@ def test_legacy_cmdline_placeholder(root):
 
 def test_imager_key_and_firstrun(root):
     key = make_key(root).strip()
-    fixture = imager_security.expected_imager_2010_payload(key).encode()
-    assert imager_security.parse_imager_2010_payload(fixture) == key
+    assert imager_security.validate_ssh_request(["enable_ssh", "-k", key]) == key
+    assert imager_security.validate_userconf_request(["consolepi", ""])
     home = root / "home/consolepi"
     home.mkdir(parents=True)
     imager_security.install_authorized_key(home, os.getuid(), os.getgid(), key)
     authorized = home / ".ssh/authorized_keys"
     assert security.validate_authorized_key(authorized, os.getuid()).startswith("ssh-ed25519 ")
     sanitizer = (ROOT / "usr/local/sbin/consolepi-prepare-generic-image").read_text()
-    bridge = (ROOT / "usr/local/libexec/consolepi-imager-firstrun").read_text()
-    assert 'mv -f /boot/.firstrun.sh.consolepi-new /boot/firstrun.sh' in sanitizer
-    assert 'consolepi-imager-import "$boot_mount"' in bridge
-    assert '/bin/sh "$payload"' not in bridge and '/bin/bash' not in bridge
+    guard = (ROOT / "usr/local/libexec/consolepi-imager-guard").read_text()
+    assert 'mv "$VENDOR_CUSTOM" "$VENDOR_CUSTOM.consolepi-vendor"' in sanitizer
+    assert 'mv "$VENDOR_USERCONF" "$VENDOR_USERCONF.consolepi-vendor"' in sanitizer
+    assert "os.execv(VENDORS[mode]" in guard
+    activation = root / "activation"
+    assert not imager_security.generic_guard_active(activation)
+    activation.write_text("generic-image-systemd-v2\n")
+    assert imager_security.generic_guard_active(activation)
+    restore = root / "restore"; restore.mkdir()
+    wrapper, active, vendor = restore / "wrapper", restore / "active", restore / "active.consolepi-vendor"
+    wrapper.write_text("guard\n"); active.write_text("guard\n"); vendor.write_text("vendor\n")
+    for path in (wrapper, active, vendor): os.chmod(path, 0o755)
+    imager_security.restore_vendor_entrypoint(active, vendor, wrapper, os.getuid(), os.getgid())
+    assert active.read_text() == "vendor\n" and not vendor.exists()
     assert 'ln -s "$boot_relative/cmdline.txt" /boot/cmdline.txt' in sanitizer
 
-    rejected = [
-        fixture.replace(b"'pi' ''", b"'pi' '$6$passwordhash'"),
-        fixture.replace(b"'pi' ''", b"'other' ''"),
-        fixture.replace(b"set +e\n", b"set +e\nhostname evil\n"),
-        fixture.replace(b"set +e\n", b"set +e\nimager_custom set_wlan evil hash CZ\n"),
-        fixture.replace(b"set +e\n", b"set +e\nrpi-connect signin token\n"),
-        fixture.replace(b"set +e\n", b"set +e\necho extra\n"),
-        fixture.replace(b"exit 0\n", b"echo extra\nexit 0\n"),
-        fixture + b"echo trailing\n",
-        fixture[:-20],
-        b"",
-    ]
+    for arguments in (["consolepi", "$6$passwordhash"], ["pi", ""],
+                      ["consolepi"], ["consolepi", "", "extra"]):
+        expect_failure(imager_security.validate_userconf_request, arguments)
+    rejected = (["set_wlan", "ssid", "psk", "CZ"], ["set_hostname", "evil"],
+                ["enable_ssh"], ["enable_ssh", "-p", key],
+                ["enable_ssh", "-k", key, "extra"])
+    for arguments in rejected:
+        expect_failure(imager_security.validate_ssh_request, arguments)
     second_root = root / "second"; second_root.mkdir()
     second = make_key(second_root).strip()
-    rejected.append(fixture.replace(key.encode(), (key + "\n" + second).encode(), 1))
+    expect_failure(imager_security.validate_ssh_request, ["enable_ssh", "-k", key + "\n" + second])
     rsa = make_key(root, "rsa").strip()
-    rejected.append(imager_security.expected_imager_2010_payload(rsa).encode())
-    rejected.append(imager_security.expected_imager_2010_payload("no-port-forwarding " + key).encode())
-    rejected.append(fixture.replace(key.encode(), (key + ";touch /tmp/pwned").encode()))
-    for payload in rejected:
-        expect_failure(imager_security.parse_imager_2010_payload, payload)
+    for invalid in (rsa, "no-port-forwarding " + key, key + ";touch /tmp/pwned", "invalid"):
+        expect_failure(imager_security.validate_ssh_request, ["enable_ssh", "-k", invalid])
 
-    flow = root / "flow"; flow.mkdir()
-    flow_home = flow / "home/consolepi"; flow_home.mkdir(parents=True)
-    flow_boot = flow / "boot"; flow_boot.mkdir()
-    (flow_boot / "firstrun.sh").write_bytes(fixture)
-    (flow_boot / "cmdline.txt").write_text("rootwait systemd.run=/boot/firstrun.sh systemd.run_success_action=reboot systemd.unit=kernel-command-line.target\n")
-    failure, success = flow / "failed", flow / "imported"
-    imager_security.import_key_only_customization(
-        flow_boot, flow_home, os.getuid(), os.getgid(), failure, success
-    )
-    assert success.exists() and not failure.exists()
-    assert not (flow_boot / "firstrun.sh").exists()
-    assert "systemd.run" not in (flow_boot / "cmdline.txt").read_text()
-    assert security.validate_authorized_key(flow_home / ".ssh/authorized_keys", os.getuid()) == key
-
-    reject = root / "reject"; reject.mkdir()
-    reject_home = reject / "home/consolepi"; reject_home.mkdir(parents=True)
-    reject_boot = reject / "boot"; reject_boot.mkdir()
-    (reject_boot / "firstrun.sh").write_bytes(rejected[0])
-    (reject_boot / "cmdline.txt").write_text("rootwait systemd.run=/boot/firstrun.sh\n")
-    reject_failure, reject_success = reject / "failed", reject / "imported"
-    expect_failure(imager_security.import_key_only_customization,
-                   reject_boot, reject_home, os.getuid(), os.getgid(), reject_failure, reject_success)
-    assert reject_failure.exists() and not reject_success.exists()
-    assert not (reject_boot / "firstrun.sh").exists()
+    operations = root / "operations"; operations.mkdir()
+    ssh_operation = operations / "ssh"
+    user_operation = operations / "user"
+    imager_security.record_operation(ssh_operation, (key + "\n").encode())
+    imager_security.record_operation(user_operation, imager_security.USER_OPERATION_CONTENT)
+    assert imager_security.read_strict_marker(ssh_operation, (key + "\n").encode(), os.getuid(), os.getgid())
+    assert imager_security.read_strict_marker(user_operation, imager_security.USER_OPERATION_CONTENT, os.getuid(), os.getgid())
+    expect_failure(imager_security.record_operation, user_operation, b"again\n")
     firstboot_source = (ROOT / "usr/local/sbin/consolepi-generic-image-firstboot").read_text()
     assert 'generic-imager-customization-failed' in firstboot_source
     assert 'validate_imager_markers' in firstboot_source
+    assert "if ! python3 - \"$IMAGER_FAILURE\" \"$IMAGER_SUCCESS\" <<'PY'" in firstboot_source
+    assert "<<'PY' ||\n" not in firstboot_source
+    marker_block = firstboot_source[firstboot_source.index("if ! python3 - \"$IMAGER_FAILURE\""):
+                                    firstboot_source.index("\nfi", firstboot_source.index("if ! python3 - \"$IMAGER_FAILURE\"")) + 3]
+    marker_block = marker_block.replace('/usr/local/lib', str(ROOT / "usr/local/lib"))
+    runtime = "fail() { exit 23; }\nIMAGER_FAILURE=$1\nIMAGER_SUCCESS=$2\n" + marker_block
+    executed = subprocess.run(["sh", "-c", runtime, "sh", str(root / "missing-failure"),
+                               str(root / "missing-success")], text=True, capture_output=True)
+    assert executed.returncode == 23 and "IndentationError" not in executed.stderr
 
     boot = root / "boot"
     boot.mkdir()
@@ -332,15 +328,36 @@ def test_imager_key_and_firstrun(root):
     (unsafe_boot / "cmdline.txt").write_text("rootwait\n")
     expect_failure(imager_security.scan_boot_partition, unsafe_boot)
 
-    failed = root / "failed-cleanup"; failed.mkdir()
-    failed_home = failed / "home/consolepi"; failed_home.mkdir(parents=True)
-    failed_boot = failed / "boot"; failed_boot.mkdir()
-    (failed_boot / "firstrun.sh").write_bytes(fixture)
-    (failed_boot / "cmdline.txt").mkdir()
-    failed_marker, failed_success = failed / "failed", failed / "imported"
-    expect_failure(imager_security.import_key_only_customization,
-                   failed_boot, failed_home, os.getuid(), os.getgid(), failed_marker, failed_success)
-    assert failed_marker.exists() and not failed_success.exists()
+
+    hostkeys = root / "hostkeys"; hostkeys.mkdir()
+    assert imager_security.require_no_host_keys(hostkeys)
+    (hostkeys / "ssh_host_ed25519_key").write_text("existing")
+    expect_failure(imager_security.require_no_host_keys, hostkeys)
+    (hostkeys / "ssh_host_ed25519_key").unlink()
+    expect_failure(imager_security.validate_host_keys, hostkeys, os.getuid(), os.getgid())
+    subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f",
+                    str(hostkeys / "ssh_host_ed25519_key")], check=True)
+    os.chmod(hostkeys / "ssh_host_ed25519_key", 0o600)
+    os.chmod(hostkeys / "ssh_host_ed25519_key.pub", 0o644)
+    assert imager_security.validate_host_keys(hostkeys, os.getuid(), os.getgid())
+
+    class Result:
+        def __init__(self, returncode): self.returncode = returncode
+
+    empty = root / "hostkeys-keygen-fail"; empty.mkdir()
+    expect_failure(imager_security.provision_host_keys, empty, os.getuid(), os.getgid(),
+                   lambda *args, **kwargs: Result(1))
+
+    generated = root / "hostkeys-sshd-fail"; generated.mkdir()
+    def fail_sshd(command, **kwargs):
+        if command[0] == "ssh-keygen":
+            subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f",
+                            str(generated / "ssh_host_ed25519_key")], check=True)
+            os.chmod(generated / "ssh_host_ed25519_key", 0o600)
+            os.chmod(generated / "ssh_host_ed25519_key.pub", 0o644)
+            return Result(0)
+        return Result(1)
+    expect_failure(imager_security.provision_host_keys, generated, os.getuid(), os.getgid(), fail_sshd)
 
 
 def main():
