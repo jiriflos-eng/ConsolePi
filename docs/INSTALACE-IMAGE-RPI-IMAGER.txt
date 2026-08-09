@@ -157,7 +157,10 @@ provozovaném ConsolePi jej nespouštějte.
    chrání skutečné vendor entrypointy, které volá FAT payload Imageru. Povolí
    pouze `enable_ssh -k` s jediným Ed25519 veřejným klíčem a beze změny jej
    uloží účtu `consolepi`; userconf přijme jen účet `consolepi` s prázdným
-   password argumentem. Ostatní operace vytvoří persistentní failure marker.
+   password argumentem. Imager nemusí při čistém key-only workflow userconf
+   volat. Ostatní operace vytvoří write-once persistentní failure marker;
+   první důvod se dalšími pokusy nepřepisuje. Metadata volání guardů se bez
+   argumentů a tajemství ukládají do root-only `generic-imager-audit.jsonl`.
 3. Ihned poté zařízení vypněte zobrazeným příkazem. Sanitizovaný master už
    znovu nespouštějte před pořízením image vypnuté karty.
 4. Image před zveřejněním připojte jen pro čtení a ověřte, že neobsahuje

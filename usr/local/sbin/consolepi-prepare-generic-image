@@ -218,7 +218,8 @@ passwd -l consolepi >/dev/null
 passwd -d console >/dev/null 2>&1 || true
 passwd -l console >/dev/null 2>&1 || true
 rm -f "$STATE_DIR/generic-imager-customization-failed" "$STATE_DIR/generic-imager-customization-imported" \
-    "$STATE_DIR/.generic-imager-ssh-operation" "$STATE_DIR/.generic-imager-user-operation"
+    "$STATE_DIR/.generic-imager-ssh-operation" "$STATE_DIR/.generic-imager-user-operation" \
+    "$STATE_DIR/generic-imager-audit.jsonl"
 
 # No pre-existing login key may survive in a generic image.
 find /root /home -xdev -type f -path '*/.ssh/*' -delete 2>/dev/null || true

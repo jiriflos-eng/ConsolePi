@@ -1,5 +1,6 @@
 #!/usr/bin/python3
 import importlib
+import json
 import os
 import pathlib
 import subprocess
@@ -177,6 +178,69 @@ def test_active_state_and_markers(root):
     both_failure = cases / "both-failure"; both_failure.write_text("failed\n")
     expect_failure(imager_security.validate_imager_markers, both_failure, owner, uid, gid)
 
+    write_once = root / "write-once"; write_once.mkdir()
+    first_failure = write_once / "failure"
+    assert imager_security.mark_failure_once(first_failure, "first reason", uid, gid)
+    assert not imager_security.mark_failure_once(first_failure, "second reason", uid, gid)
+    assert first_failure.read_text() == "first reason\n"
+    for kind in ("dangling", "directory", "fifo"):
+        occupied = write_once / kind
+        if kind == "dangling": occupied.symlink_to(write_once / "missing")
+        elif kind == "directory": occupied.mkdir()
+        else: os.mkfifo(occupied)
+        assert not imager_security.mark_failure_once(occupied, "must not replace", uid, gid)
+        assert occupied.is_symlink() if kind == "dangling" else occupied.exists()
+    expect_failure(imager_security.ensure_transaction_open, first_failure,
+                   write_once / "no-success", uid, gid)
+    assert first_failure.read_text() == "first reason\n"
+
+    unexpected_success = write_once / "unexpected-success"
+    unexpected_success.write_bytes(imager_security.SUCCESS_CONTENT); os.chmod(unexpected_success, 0o600)
+    generated_failure = write_once / "generated-failure"
+    expect_failure(imager_security.ensure_transaction_open, generated_failure,
+                   unexpected_success, uid, gid)
+    assert generated_failure.read_text() == "unexpected Imager success marker is already present\n"
+
+    optional = root / "optional-user"; optional.mkdir()
+    user_marker = optional / "user"
+    assert not imager_security.validate_optional_marker(
+        user_marker, imager_security.USER_OPERATION_CONTENT, uid, gid)
+    user_marker.write_bytes(imager_security.USER_OPERATION_CONTENT); os.chmod(user_marker, 0o600)
+    assert imager_security.validate_optional_marker(
+        user_marker, imager_security.USER_OPERATION_CONTENT, uid, gid)
+    user_marker.write_text("malformed\n"); os.chmod(user_marker, 0o600)
+    expect_failure(imager_security.validate_optional_marker, user_marker,
+                   imager_security.USER_OPERATION_CONTENT, uid, gid)
+    user_marker.unlink(); user_marker.symlink_to(optional / "missing")
+    expect_failure(imager_security.validate_optional_marker, user_marker,
+                   imager_security.USER_OPERATION_CONTENT, uid, gid)
+
+    audit_root = root / "audit"; audit_root.mkdir()
+    audit = audit_root / "events.jsonl"
+    key_secret = "ssh-ed25519 AAAAC3Nza-secret-key-material"
+    password_secret = "$6$secret-password-hash"
+    hostname_secret = "private-hostname"
+    ssid_secret = "private-ssid"
+    assert imager_security.guard_operation_label("ssh", ["enable_ssh", "-k", key_secret]) == "enable_ssh"
+    assert imager_security.guard_operation_label("user", ["consolepi", password_secret]) == "user_config"
+    imager_security.append_guard_audit("imager_custom", "enable_ssh", 3, "accepted", audit, uid, gid)
+    imager_security.append_guard_audit("userconf", "user_config", 2, "rejected", audit, uid, gid)
+    events = [json.loads(line) for line in audit.read_text().splitlines()]
+    assert [event["seq"] for event in events] == [1, 2]
+    assert events[0] == {"seq": 1, "guard": "imager_custom", "operation": "enable_ssh",
+                         "argc": 3, "result": "accepted"}
+    audit_text = audit.read_text()
+    for secret in (key_secret, password_secret, hostname_secret, ssid_secret, "consolepi"):
+        assert secret not in audit_text
+    for kind in ("directory", "dangling", "fifo", "wrong-mode"):
+        unsafe = audit_root / kind
+        if kind == "directory": unsafe.mkdir()
+        elif kind == "dangling": unsafe.symlink_to(audit_root / "missing")
+        elif kind == "fifo": os.mkfifo(unsafe)
+        else: unsafe.write_text(""); os.chmod(unsafe, 0o644)
+        expect_failure(imager_security.append_guard_audit, "imager_custom", "unknown", 1,
+                       "rejected", unsafe, uid, gid)
+
     source = (ROOT / "usr/local/sbin/consolepi-generic-image-firstboot").read_text()
     assert source.index("validate_generic_access") < source.index("case \"$state\" in claim_pending")
 
@@ -191,6 +255,7 @@ def test_standard_isolation():
     assert "systemctl enable consolepi-generic-image-firstboot" not in installer
     assert "service.d/consolepi-generic-image.conf" not in installer
     assert "imager-systemd-compat" not in installer
+    assert "generic-imager-audit.jsonl" not in installer
 
 
 def test_machine_id_sanitization(root):

@@ -8,7 +8,9 @@ from pathlib import Path
 sys.path.insert(0, "/usr/local/lib")
 from consolepi_imager_security import (
     FAILURE_MARKER, SSH_OPERATION, USER_OPERATION, USER_OPERATION_CONTENT,
-    ImagerImportError, generic_guard_active, generic_pending, install_authorized_key, mark_failure,
+    append_guard_audit,
+    ImagerImportError, generic_guard_active, generic_pending, guard_operation_label,
+    install_authorized_key, mark_failure_once,
     record_operation, validate_ssh_request, validate_userconf_request,
 )
 
@@ -39,6 +41,8 @@ def main():
     mode, arguments = sys.argv[1], sys.argv[2:]
     if not generic_guard_active():
         os.execv(VENDORS[mode], [VENDORS[mode], *arguments])
+    operation = guard_operation_label(mode, arguments)
+    guard_name = "userconf" if mode == "user" else "imager_custom"
     try:
         if not generic_pending():
             raise ImagerImportError("generic Imager guard state is missing, malformed, or no longer pending")
@@ -47,14 +51,21 @@ def main():
             validate_userconf_request(arguments)
             record_operation(USER_OPERATION, USER_OPERATION_CONTENT)
             locked_account()
+            append_guard_audit(guard_name, operation, len(arguments), "accepted")
             return
         key = validate_ssh_request(arguments)
         install_authorized_key(account.pw_dir, account.pw_uid, account.pw_gid, key)
         record_operation(SSH_OPERATION, (key + "\n").encode())
         locked_account()
+        append_guard_audit(guard_name, operation, len(arguments), "accepted")
     except Exception as exc:
         try:
-            mark_failure(FAILURE_MARKER, str(exc))
+            append_guard_audit(guard_name, operation, len(arguments), "rejected")
+            reason = str(exc)
+        except Exception:
+            reason = "generic Imager guard audit failed"
+        try:
+            mark_failure_once(FAILURE_MARKER, reason)
         finally:
             print(f"ConsolePi rejected Raspberry Pi Imager customization: {exc}", file=sys.stderr)
         raise SystemExit(1)

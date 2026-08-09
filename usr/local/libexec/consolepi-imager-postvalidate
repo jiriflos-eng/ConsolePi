@@ -12,14 +12,14 @@ from consolepi_firstboot_security import unexpected_login_accounts, validate_gen
 from consolepi_imager_security import (
     FAILURE_MARKER, SSH_OPERATION, SUCCESS_CONTENT, SUCCESS_MARKER,
     USER_OPERATION, USER_OPERATION_CONTENT, ImagerImportError, _atomic_write,
-    _lexists, generic_pending, mark_failure, read_strict_marker,
-    restore_vendor_entrypoint, validate_ed25519_key,
+    _lexists, ensure_transaction_open, generic_pending, mark_failure_once, read_strict_marker,
+    restore_vendor_entrypoint, validate_ed25519_key, validate_optional_marker,
 )
 
 
 def fail(message):
     try:
-        mark_failure(FAILURE_MARKER, message)
+        mark_failure_once(FAILURE_MARKER, message)
     finally:
         raise ImagerImportError(message)
 
@@ -28,8 +28,7 @@ def main():
     try:
         if os.geteuid() != 0 or not generic_pending():
             fail("post-Imager validation requires the generic pending state")
-        if _lexists(FAILURE_MARKER) or _lexists(SUCCESS_MARKER):
-            fail("Imager transaction already has a terminal marker")
+        ensure_transaction_open(FAILURE_MARKER, SUCCESS_MARKER)
         boot_config = Path("/etc/consolepi/imager-boot-mount")
         boot_mount = Path(read_strict_marker(boot_config).decode().strip())
         if not str(boot_mount).startswith("/boot/") or boot_mount.is_symlink() or not boot_mount.is_dir():
@@ -57,7 +56,7 @@ def main():
         recorded_key = read_strict_marker(SSH_OPERATION).decode()
         if recorded_key != key + "\n" or validate_ed25519_key(key) != key:
             fail("authorized key does not match the guarded Imager operation")
-        read_strict_marker(USER_OPERATION, USER_OPERATION_CONTENT)
+        validate_optional_marker(USER_OPERATION, USER_OPERATION_CONTENT)
         if socket.gethostname() != "consolepi":
             fail("hostname customization is not permitted")
         for connect_state in ("/var/lib/rpi-connect", "/root/.config/rpi-connect",
@@ -102,7 +101,7 @@ def main():
     except Exception as exc:
         if not _lexists(FAILURE_MARKER):
             try:
-                mark_failure(FAILURE_MARKER, str(exc))
+                mark_failure_once(FAILURE_MARKER, str(exc))
             except Exception:
                 pass
         print(f"ConsolePi post-Imager validation failed: {exc}", file=sys.stderr)
