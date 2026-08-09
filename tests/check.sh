@@ -23,6 +23,7 @@ for file in \
     "$ROOT/usr/local/sbin/consolepi-admin-menu" \
     "$ROOT/usr/local/sbin/consolepi-generic-image-firstboot" \
     "$ROOT/usr/local/sbin/consolepi-prepare-generic-image" \
+    "$ROOT/usr/local/libexec/consolepi-imager-firstrun" \
     "$ROOT/etc/profile.d/consolepi-status.sh" \
     "$ROOT/bootstrap-install.sh" \
     "$ROOT/tools/build-install-bundle.sh" \
@@ -53,6 +54,11 @@ python3 -c 'import ast, pathlib; [ast.parse(pathlib.Path(p).read_text()) for p i
 )]' &&
     ok "Python syntax" ||
     bad "Python syntax"
+
+python3 -c 'import ast, pathlib; [ast.parse(pathlib.Path(p).read_text()) for p in (
+    "'"$ROOT"'/usr/local/libexec/consolepi-imager-import",
+    "'"$ROOT"'/usr/local/lib/consolepi_imager_security.py"
+)]' && ok "strict Imager importer Python syntax" || bad "strict Imager importer Python syntax"
 
 python3 "$ROOT/tests/generic_behavior.py" || bad "generic image behavioral security tests"
 if [ "${CONSOLEPI_SKIP_ARCHIVE_TEST:-0}" != 1 ]; then
@@ -125,7 +131,7 @@ grep -q '^Match User console LocalPort 2201$' "$ROOT/etc/ssh/sshd_config.d/40-co
     ! grep -q 'network-online.target' "$ROOT/etc/systemd/system/consolepi-generic-image-firstboot.service" &&
     grep -q '39-consolepi-generic-image.conf' "$ROOT/usr/local/sbin/consolepi-prepare-generic-image" &&
     grep -q 'Match User consolepi' "$ROOT/usr/local/sbin/consolepi-prepare-generic-image" &&
-    grep -q 'validate_authorized_key' "$ROOT/usr/local/sbin/consolepi-generic-image-firstboot" &&
+    grep -q 'validate_generic_access' "$ROOT/usr/local/sbin/consolepi-generic-image-firstboot" &&
     grep -q 'passwd -l consolepi' "$ROOT/usr/local/sbin/consolepi-prepare-generic-image" &&
     grep -q 'rm -f /etc/ssh/ssh_host_' "$ROOT/usr/local/sbin/consolepi-prepare-generic-image" &&
     grep -q 'pam_radius_auth.conf' "$ROOT/usr/local/sbin/consolepi-prepare-generic-image" &&
@@ -133,11 +139,17 @@ grep -q '^Match User console LocalPort 2201$' "$ROOT/etc/ssh/sshd_config.d/40-co
     grep -q '/etc/apt/apt.conf.d/90consolepi-proxy' "$ROOT/usr/local/sbin/consolepi-prepare-generic-image" &&
     grep -q '/var/backups/consolepi' "$ROOT/usr/local/sbin/consolepi-prepare-generic-image" &&
     grep -q 'systemd-analyze verify' "$ROOT/usr/local/sbin/consolepi-prepare-generic-image" &&
-    grep -q 'validate_authorized_key' "$ROOT/usr/local/sbin/consolepi-generic-image-firstboot" &&
+    grep -q 'validate_generic_access' "$ROOT/usr/local/sbin/consolepi-generic-image-firstboot" &&
     grep -q '.consolepi-firstboot-token' "$ROOT/usr/local/sbin/consolepi-generic-image-firstboot" &&
     grep -q 'ownership-verify' "$ROOT/usr/local/sbin/consolepi-maintenance" &&
     ! grep -q 'session\["setup_ownership_token"\]' "$ROOT/opt/consolepi-web/app.py" &&
     grep -q 'value="keep" checked' "$ROOT/opt/consolepi-web/templates/setup.html" &&
+    grep -q 'sanitize_boot_partition' "$ROOT/usr/local/sbin/consolepi-prepare-generic-image" &&
+    grep -q 'clear_directory("/var/lib/cloud")' "$ROOT/usr/local/sbin/consolepi-prepare-generic-image" &&
+    grep -q 'imager-systemd-compat' "$ROOT/usr/local/sbin/consolepi-prepare-generic-image" &&
+    grep -q 'expected_imager_2010_payload' "$ROOT/usr/local/lib/consolepi_imager_security.py" &&
+    grep -q 'generic-imager-customization-failed' "$ROOT/usr/local/sbin/consolepi-generic-image-firstboot" &&
+    ! grep -Eq '(sh|bash) .*firstrun\.sh' "$ROOT/usr/local/libexec/consolepi-imager-firstrun" &&
     grep -q 'NEZAPÍNEJTE.*Set username and password' "$ROOT/docs/INSTALACE-IMAGE-RPI-IMAGER.txt" &&
     ! grep -q 'Use password authentication' "$ROOT/docs/INSTALACE-IMAGE-RPI-IMAGER.txt" &&
     ok "generic image key-only first boot" ||

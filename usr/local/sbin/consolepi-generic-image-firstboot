@@ -15,6 +15,8 @@ CONSOLE_KEYS=/home/console/.ssh/authorized_keys
 TLS_DIR=/etc/consolepi/tls
 CLAIM_TOKEN=/home/consolepi/.consolepi-firstboot-token
 CLAIM_METADATA=/etc/consolepi/firstboot-claim.json
+IMAGER_FAILURE=/etc/consolepi/generic-imager-customization-failed
+IMAGER_SUCCESS=/etc/consolepi/generic-imager-customization-imported
 
 fail()
 {
@@ -31,24 +33,29 @@ print(generic_state(sys.argv[1], sys.argv[2]))
 PY
 )
 case "$state" in
-    pending) ;;
-    standard|claim_pending|key_generation_pending|complete) exit 0 ;;
+    standard) exit 0 ;;
+    pending|claim_pending|key_generation_pending|complete) ;;
     *) fail 'generic-image stav chybí nebo je poškozený' ;;
 esac
-[ "$(id -u "$ADMIN_USER")" = 1000 ] || fail 'účet consolepi nemá UID 1000; klíč Imageru nelze bezpečně přiřadit'
-
-case $(passwd -S "$ADMIN_USER" 2>/dev/null | awk '{print $2}') in
-    L|LK) ;;
-    *) fail 'heslo účtu consolepi není uzamčené' ;;
-esac
-
-key=$(python3 - "$ADMIN_KEYS" "$(id -u "$ADMIN_USER")" <<'PY'
+python3 - "$IMAGER_FAILURE" "$IMAGER_SUCCESS" <<'PY' ||
+    fail 'Imager success/failure stav je chybějící, poškozený nebo odmítnutý'
 import sys
 sys.path.insert(0, "/usr/local/lib")
-from consolepi_firstboot_security import validate_authorized_key
-print(validate_authorized_key(sys.argv[1], int(sys.argv[2])))
+from consolepi_imager_security import validate_imager_markers
+validate_imager_markers(sys.argv[1], sys.argv[2])
 PY
-) || fail 'Imager nedodal právě jeden bezpečný veřejný klíč ssh-ed25519'
+
+key=$(python3 - "$state" /etc/passwd /etc/shadow /home/consolepi <<'PY'
+import sys
+sys.path.insert(0, "/usr/local/lib")
+from consolepi_firstboot_security import validate_generic_access
+print(validate_generic_access(
+    sys.argv[1], open(sys.argv[2]).read(), open(sys.argv[3]).read(), sys.argv[4], 1000, 1000
+))
+PY
+) || fail 'účet consolepi, locked password nebo authorized_keys nesplňuje bezpečnostní invarianty'
+
+case "$state" in claim_pending|key_generation_pending|complete) unset key; exit 0 ;; esac
 
 install -d -o console -g console -m 0700 /home/console/.ssh
 tmp_console_key=$(mktemp /home/console/.ssh/.authorized_keys.XXXXXX)

@@ -24,11 +24,12 @@ KROK 1 – ZÁPIS IMAGE
 1. Vložte SD kartu do počítače.
 2. Otevřete Raspberry Pi Imager.
 3. Klikněte na „Choose Device“ a vyberte Raspberry Pi 3.
-4. Klikněte na „Choose OS“.
-5. Zcela dole zvolte „Use custom“ / „Použít vlastní image“.
-6. Vyberte soubor ConsolePi-...img.xz.
-7. Klikněte na „Choose Storage“ a vyberte správnou SD kartu.
-8. Otevřete nastavení OS customizace:
+4. Klikněte na „Choose OS“ a vyberte **ConsolePi Generic Image** z
+   ConsolePi custom repository. Přímé „Use custom“ v Imageru 2.0.x
+   OS Customisation pro vlastní image nezpřístupní, proto není podporované.
+5. Použitá položka repository musí deklarovat `init_format: systemd`.
+6. Klikněte na „Choose Storage“ a vyberte správnou SD kartu.
+7. Otevřete nastavení OS customizace:
    - v části General NEZAPÍNEJTE „Set username and password“; účet consolepi
      je už v image a jeho systémové heslo je uzamčené,
    - v Services zapněte SSH, vyberte výhradně „Allow public-key
@@ -36,9 +37,12 @@ KROK 1 – ZÁPIS IMAGE
    - nikdy nevkládejte soukromý klíč (soubor bez přípony .pub),
    - hostname, Wi-Fi a ostatní volby ponechte beze změny; první připojení
      generic image je určené pro ethernet s DHCP.
-9. Klikněte na „Write“ a potvrďte smazání SD karty.
-10. Vyčkejte na dokončení zápisu i ověření („Verification successful“).
-11. SD kartu bezpečně vysuňte.
+   V celé OS Customisation nesmí být aktivní žádná jiná změna než SSH
+   public-key authentication. I automaticky předvyplněné volby hostname,
+   locale, timezone nebo Wi-Fi výslovně vypněte.
+8. Klikněte na „Write“ a potvrďte smazání SD karty.
+9. Vyčkejte na dokončení zápisu i ověření („Verification successful“).
+10. SD kartu bezpečně vysuňte.
 
 KROK 2 – PRVNÍ START
 --------------------
@@ -147,8 +151,12 @@ provozovaném ConsolePi jej nespouštějte.
    náhradní konfigurace. Potom odstraní hashe a uzamkne systémová hesla,
    odstraní všechny uživatelské SSH klíče, hostitelské SSH a TLS klíče,
    webová, RADIUS, SNMPv3, proxy a síťová tajemství, zálohy, historie, logy,
-   machine-id a DHCP lease. Integrace, identita, firewall allowlist a ethernet
-   se resetují do neaktivního generického stavu s DHCP.
+   machine-id, DHCP lease, cloud-init runtime stav a všechny NoCloud seedy
+   z firmware partition. Integrace, identita, firewall allowlist a ethernet
+   se resetují do neaktivního generického stavu s DHCP. Generic-only Imager
+   bridge předá FAT payload ConsolePi importeru. Importer payload nikdy
+   nespouští: přijme pouze přesnou key-only šablonu Imageru 2.0.10, vyjme z ní
+   jediný Ed25519 veřejný klíč a bezpečně jej uloží účtu `consolepi` s UID 1000.
 3. Ihned poté zařízení vypněte zobrazeným příkazem. Sanitizovaný master už
    znovu nespouštějte před pořízením image vypnuté karty.
 4. Image před zveřejněním připojte jen pro čtení a ověřte, že neobsahuje
@@ -161,6 +169,14 @@ consolepi, zkopíruje jej technickému účtu console a vytvoří nové hostitel
 SSH klíče, TLS klíč a webové tajemství. Pokud klíč chybí, je neplatný nebo má
 nebezpečná oprávnění, SSH i web zůstanou zastavené. Po úspěchu vznikne
 jednorázový token čitelný pouze účtem consolepi přes ověřené SSH spojení.
+V OS Customisation smí být zapnuto pouze SSH s public-key authentication a
+právě jedním Ed25519 klíčem. Username/password, hostname, Wi-Fi, locale,
+timezone, keyboard, Raspberry Pi Connect a všechny další volby jsou
+nepodporované. Importer jakoukoli odchylku persistentně označí jako selhání,
+odstraní FAT payload a first-boot služby SSH ani web neuvolní.
+Stav `generic-imager-customization-failed` se restartem nemaže. Takovou kartu
+nepřipojujte do sítě; z lokální konzole ověřte příčinu a připravte ji znovu
+od čistého, úspěšně sanitizovaného masteru se správnou key-only customizací.
 
 Pokud se first boot přeruší před ověřením tokenu, spusťte zařízení znovu;
 služba bezpečně pokračuje podle uloženého stavu. Vypršel-li token nebo je-li

@@ -156,7 +156,7 @@ def consume_session(session_id, session_dir):
     session_path(session_dir, session_id).unlink(missing_ok=True)
 
 
-def validate_authorized_key(path, expected_uid):
+def validate_authorized_key(path, expected_uid, expected_gid=None):
     path = Path(path)
     directory = path.parent
     flags = os.O_RDONLY | os.O_DIRECTORY
@@ -170,7 +170,9 @@ def validate_authorized_key(path, expected_uid):
         directory_stat = os.fstat(directory_fd)
         if not stat.S_ISDIR(directory_stat.st_mode):
             raise ClaimError("Adresář .ssh není bezpečný adresář.")
-        if directory_stat.st_uid != expected_uid or stat.S_IMODE(directory_stat.st_mode) != 0o700:
+        if (directory_stat.st_uid != expected_uid or
+                (expected_gid is not None and directory_stat.st_gid != expected_gid) or
+                stat.S_IMODE(directory_stat.st_mode) != 0o700):
             raise ClaimError("Adresář .ssh má nesprávného vlastníka nebo mód.")
         file_flags = os.O_RDONLY
         if hasattr(os, "O_NOFOLLOW"):
@@ -183,7 +185,9 @@ def validate_authorized_key(path, expected_uid):
             file_stat = os.fstat(stream.fileno())
             if not stat.S_ISREG(file_stat.st_mode):
                 raise ClaimError("authorized_keys není bezpečný běžný soubor.")
-            if file_stat.st_uid != expected_uid or stat.S_IMODE(file_stat.st_mode) not in {0o400, 0o600}:
+            if (file_stat.st_uid != expected_uid or
+                    (expected_gid is not None and file_stat.st_gid != expected_gid) or
+                    stat.S_IMODE(file_stat.st_mode) != 0o600):
                 raise ClaimError("authorized_keys má nesprávného vlastníka nebo mód.")
             if file_stat.st_nlink != 1:
                 raise ClaimError("authorized_keys má neočekávaný počet hardlinků.")
@@ -205,6 +209,35 @@ def validate_authorized_key(path, expected_uid):
     if checked.returncode:
         raise ClaimError("Veřejný SSH klíč není platný.")
     return lines[0]
+
+
+def validate_generic_access(state, passwd_text, shadow_text, home_path,
+                            expected_uid=1000, expected_gid=1000):
+    active_states = {"pending", "claim_pending", "key_generation_pending", "complete"}
+    if state not in active_states:
+        raise ClaimError("Stav neumožňuje generic přístup.")
+    accounts = [line.split(":") for line in passwd_text.splitlines() if line]
+    matches = [fields for fields in accounts if len(fields) == 7 and fields[0] == "consolepi"]
+    if len(matches) != 1:
+        raise ClaimError("Účet consolepi chybí nebo není jednoznačný.")
+    account = matches[0]
+    if (account[2] != str(expected_uid) or account[3] != str(expected_gid) or
+            account[5] != str(home_path)):
+        raise ClaimError("Účet consolepi nemá očekávané UID, GID nebo home.")
+    shadow = [line.split(":") for line in shadow_text.splitlines() if line]
+    locked = [fields for fields in shadow if len(fields) >= 2 and fields[0] == "consolepi"]
+    if len(locked) != 1 or not locked[0][1].startswith(("!", "*")):
+        raise ClaimError("Heslo účtu consolepi není uzamčené.")
+    home = Path(home_path)
+    try:
+        home_info = home.lstat()
+    except OSError as exc:
+        raise ClaimError("Home účtu consolepi není bezpečný.") from exc
+    if (not stat.S_ISDIR(home_info.st_mode) or stat.S_ISLNK(home_info.st_mode) or
+            home_info.st_uid != expected_uid or home_info.st_gid != expected_gid or
+            stat.S_IMODE(home_info.st_mode) & 0o022):
+        raise ClaimError("Home účtu consolepi není bezpečný.")
+    return validate_authorized_key(home / ".ssh/authorized_keys", expected_uid, expected_gid)
 
 
 def unexpected_login_accounts(passwd_text, allowed=("root", "consolepi", "console")):

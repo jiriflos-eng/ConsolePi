@@ -121,7 +121,7 @@ backup_if_exists()
     fi
 }
 
-install -d -m 0755 /etc/consolepi /etc/ssh/sshd_config.d /etc/profile.d /usr/local/sbin /usr/local/lib /usr/share/consolepi
+install -d -m 0755 /etc/consolepi /etc/ssh/sshd_config.d /etc/profile.d /usr/local/sbin /usr/local/lib /usr/local/libexec /usr/share/consolepi
 install -d -m 0755 /etc/udev/rules.d /etc/tmpfiles.d /etc/logrotate.d
 install -d -m 0755 /etc/systemd/system /etc/nginx/sites-available /etc/sudoers.d
 install -d -m 0755 /etc/consolepi/tls
@@ -153,6 +153,9 @@ for target in \
     /usr/local/sbin/consolepi-generic-image-firstboot \
     /usr/local/sbin/consolepi-prepare-generic-image \
     /usr/local/lib/consolepi_firstboot_security.py \
+    /usr/local/lib/consolepi_imager_security.py \
+    /usr/local/libexec/consolepi-imager-firstrun \
+    /usr/local/libexec/consolepi-imager-import \
     /usr/local/sbin/consolepi-snmp-pass-persist \
     /usr/local/sbin/consolepi-release \
     /etc/profile.d/consolepi-status.sh \
@@ -249,6 +252,9 @@ install -m 0755 "$ROOT/usr/local/sbin/consolepi-update-check" /usr/local/sbin/co
 install -m 0755 "$ROOT/usr/local/sbin/consolepi-generic-image-firstboot" /usr/local/sbin/consolepi-generic-image-firstboot
 install -m 0755 "$ROOT/usr/local/sbin/consolepi-prepare-generic-image" /usr/local/sbin/consolepi-prepare-generic-image
 install -m 0644 "$ROOT/usr/local/lib/consolepi_firstboot_security.py" /usr/local/lib/consolepi_firstboot_security.py
+install -m 0644 "$ROOT/usr/local/lib/consolepi_imager_security.py" /usr/local/lib/consolepi_imager_security.py
+install -m 0755 "$ROOT/usr/local/libexec/consolepi-imager-firstrun" /usr/local/libexec/consolepi-imager-firstrun
+install -m 0755 "$ROOT/usr/local/libexec/consolepi-imager-import" /usr/local/libexec/consolepi-imager-import
 install -m 0755 "$ROOT/usr/local/sbin/consolepi-snmp-pass-persist" /usr/local/sbin/consolepi-snmp-pass-persist
 install -m 0755 "$ROOT/usr/local/sbin/consolepi-release" /usr/local/sbin/consolepi-release
 install -m 0755 "$ROOT/usr/local/sbin/consolepi-release-runner" /usr/local/sbin/consolepi-release-runner

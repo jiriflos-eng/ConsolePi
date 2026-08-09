@@ -8,8 +8,11 @@ umask 077
 
 STATE_DIR=/etc/consolepi
 RECOVERY=$STATE_DIR/generic-image-recovery.txt
+IMAGER_FIRSTRUN=/usr/local/libexec/consolepi-imager-firstrun
+IMAGER_IMPORT=/usr/local/libexec/consolepi-imager-import
 destructive=no
 prep_dir=
+boot_mount=
 
 cleanup()
 {
@@ -33,11 +36,42 @@ id console >/dev/null 2>&1 || fail 'chybí účet console'
 getent group consolepi-web >/dev/null 2>&1 || fail 'chybí skupina consolepi-web'
 [ -x /usr/local/sbin/consolepi-generic-image-firstboot ] || fail 'chybí first-boot program'
 [ -f /etc/systemd/system/consolepi-generic-image-firstboot.service ] || fail 'chybí first-boot unit'
+[ -x "$IMAGER_FIRSTRUN" ] || fail 'chybí generic Imager firstrun bridge'
+[ -x "$IMAGER_IMPORT" ] || fail 'chybí generic Imager importer'
+[ -f /usr/local/lib/consolepi_imager_security.py ] || fail 'chybí Imager security modul'
 [ -w /etc ] && [ -w "$STATE_DIR" ] && [ -w /home/consolepi ] || fail 'potřebné filesystémy nejsou zapisovatelné'
 [ "$(df -Pk "$STATE_DIR" | awk 'NR==2 {print $4}')" -ge 10240 ] || fail 'je potřeba alespoň 10 MiB volného místa'
-for command in awk cp df find getent grep hostnamectl install journalctl mktemp mv openssl passwd python3 sshd ssh-keygen stat systemctl systemd-analyze truncate; do
+for command in awk cat cp df find findmnt getent grep hostnamectl install journalctl ln mktemp mount mv openssl passwd python3 readlink sshd ssh-keygen stat systemctl systemd-analyze truncate; do
     command -v "$command" >/dev/null 2>&1 || fail "chybí utilita $command"
 done
+
+# Locate the mounted Raspberry Pi firmware FAT partition by content and type.
+boot_candidates=
+while IFS=' ' read -r target fstype; do
+    case "$fstype" in vfat|msdos|fat|fat32) ;; *) continue ;; esac
+    [ -f "$target/config.txt" ] && [ -f "$target/cmdline.txt" ] || continue
+    boot_candidates="${boot_candidates}${target}\n"
+done <<EOF
+$(findmnt -rn -o TARGET,FSTYPE)
+EOF
+boot_mount=$(printf '%b' "$boot_candidates" | sed '/^$/d')
+[ -n "$boot_mount" ] && [ "$(printf '%s\n' "$boot_mount" | wc -l | tr -d ' ')" -eq 1 ] ||
+    fail 'nelze jednoznačně určit připojenou firmware FAT partition'
+case "$boot_mount" in /boot/*) ;; *) fail "firmware partition má nepodporovaný mountpoint $boot_mount" ;; esac
+[ -w "$boot_mount" ] || fail "firmware partition $boot_mount není zapisovatelná"
+[ -d /var/lib/cloud ] && [ ! -L /var/lib/cloud ] && [ -w /var/lib/cloud ] ||
+    fail '/var/lib/cloud chybí, je symlink nebo není zapisovatelný'
+[ ! -e /boot/firstrun.sh ] && [ ! -L /boot/firstrun.sh ] || fail '/boot/firstrun.sh už existuje'
+[ ! -e /boot/cmdline.txt ] && [ ! -L /boot/cmdline.txt ] || fail '/boot/cmdline.txt už existuje'
+python3 - "$IMAGER_IMPORT" <<'PY' || fail 'Imager importer není syntakticky platný'
+import ast, pathlib, sys
+ast.parse(pathlib.Path(sys.argv[1]).read_text())
+PY
+python3 - /usr/local/lib/consolepi_imager_security.py <<'PY' || fail 'Imager security modul není syntakticky platný'
+import ast, pathlib, sys
+ast.parse(pathlib.Path(sys.argv[1]).read_text())
+PY
+sh -n "$IMAGER_FIRSTRUN" || fail 'Imager firstrun bridge není syntakticky platný'
 
 unexpected_accounts=$(python3 - <<'PY'
 import sys
@@ -109,6 +143,9 @@ ConsolePi generic-image recovery (pouze z lokální konzole)
    consolepi-generic-image-firstboot.service, spusťte systemctl daemon-reload
    a služby povolte teprve po ověření SSH/TLS/web konfigurace.
 EOF
+cp "$IMAGER_FIRSTRUN" "$prep_dir/imager-firstrun"
+printf '%s\n' 'generic-image-systemd-v1' >"$prep_dir/imager-systemd-compat"
+printf '%s\n' "$boot_mount" >"$prep_dir/imager-boot-mount"
 
 # Validate complete candidate SSH and systemd configurations before deletion.
 awk '$1 != "Include"' /etc/ssh/sshd_config >"$prep_dir/sshd_config"
@@ -142,6 +179,7 @@ passwd -d consolepi >/dev/null
 passwd -l consolepi >/dev/null
 passwd -d console >/dev/null 2>&1 || true
 passwd -l console >/dev/null 2>&1 || true
+rm -f "$STATE_DIR/generic-imager-customization-failed" "$STATE_DIR/generic-imager-customization-imported"
 
 # No pre-existing login key may survive in a generic image.
 find /root /home -xdev -type f -path '*/.ssh/*' -delete 2>/dev/null || true
@@ -168,6 +206,26 @@ find /etc/ppp/peers -mindepth 1 -delete 2>/dev/null || true
 find /var/lib/dhcp /var/lib/NetworkManager -type f -delete 2>/dev/null || true
 hostnamectl set-hostname consolepi
 find /var/lib/consolepi-web -mindepth 1 -delete 2>/dev/null || true
+python3 - "$boot_mount" <<'PY'
+import sys
+sys.path.insert(0, "/usr/local/lib")
+from consolepi_imager_security import clear_directory, sanitize_boot_partition
+clear_directory("/var/lib/cloud")
+sanitize_boot_partition(sys.argv[1])
+PY
+
+# Generic-only Raspberry Pi Imager 2.x compatibility. Imager writes to the FAT
+# root but its systemd format executes and cleans up the legacy /boot paths.
+# The root-resident bridge mounts FAT and invokes only the ConsolePi-owned parser.
+install -m 0755 "$prep_dir/imager-firstrun" /boot/.firstrun.sh.consolepi-new
+mv -f /boot/.firstrun.sh.consolepi-new /boot/firstrun.sh
+boot_relative=${boot_mount#/boot/}
+ln -s "$boot_relative/cmdline.txt" /boot/cmdline.txt
+
+install -m 0600 "$prep_dir/imager-systemd-compat" "$STATE_DIR/.imager-systemd-compat.new"
+mv -f "$STATE_DIR/.imager-systemd-compat.new" "$STATE_DIR/imager-systemd-compat"
+install -m 0600 "$prep_dir/imager-boot-mount" "$STATE_DIR/.imager-boot-mount.new"
+mv -f "$STATE_DIR/.imager-boot-mount.new" "$STATE_DIR/imager-boot-mount"
 
 # Install reset configuration atomically from files prepared during preflight.
 for name in radius.json radius-secrets.json pam_radius_auth.conf snmpv3.json snmpv3-secrets.json proxy.json access-sources.json identity.json labels.json auth.conf firstboot.json; do

@@ -1,0 +1,30 @@
+#!/bin/sh
+# Generic-image bridge: mount FAT and invoke only the ConsolePi-owned importer.
+set -eu
+
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+export PATH
+
+config=/etc/consolepi/imager-boot-mount
+fail()
+{
+    /usr/local/libexec/consolepi-imager-import --mark-failure "$1" 2>/dev/null || true
+    echo "ConsolePi Imager bridge: $1" >&2
+    exit 1
+}
+[ -f "$config" ] && [ ! -L "$config" ] || {
+    fail 'missing boot-mount configuration'
+}
+boot_mount=$(cat "$config")
+case "$boot_mount" in /boot/*) ;; *)
+    fail 'invalid boot mount'
+esac
+
+if ! findmnt -rn -M "$boot_mount" >/dev/null 2>&1; then
+    mount -- "$boot_mount" || fail 'firmware partition mount failed'
+fi
+findmnt -rn -M "$boot_mount" >/dev/null 2>&1 || {
+    fail 'firmware partition is not mounted'
+}
+
+exec /usr/local/libexec/consolepi-imager-import "$boot_mount"
