@@ -193,6 +193,24 @@ def test_standard_isolation():
     assert "imager-systemd-compat" not in installer
 
 
+def test_machine_id_sanitization(root):
+    sanitizer = (ROOT / "usr/local/sbin/consolepi-prepare-generic-image").read_text()
+    preparation = "printf '%s\\n' uninitialized >\"$prep_dir/machine-id\""
+    assert preparation in sanitizer
+    assert "install -o root -g root -m 0444 \"$prep_dir/machine-id\" /etc/.machine-id.consolepi-new" in sanitizer
+    assert "mv -f /etc/.machine-id.consolepi-new /etc/machine-id" in sanitizer
+    assert "rm -f /var/lib/systemd/random-seed /var/lib/dbus/machine-id" in sanitizer
+    assert "truncate -s 0 /etc/machine-id" not in sanitizer
+    old_identity = b"0123456789abcdef0123456789abcdef\n"
+    candidate = root / "machine-id"
+    candidate.write_bytes(old_identity)
+    subprocess.run(
+        ["sh", "-c", "prep_dir=$1\n" + preparation, "sh", str(root)], check=True
+    )
+    assert candidate.read_bytes() == b"uninitialized\n"
+    assert candidate.read_bytes() and candidate.read_bytes() != old_identity
+
+
 def test_imager_key_and_firstrun(root):
     key = make_key(root).strip()
     fixture = imager_security.expected_imager_2010_payload(key).encode()
@@ -305,6 +323,7 @@ def main():
         key_root = root / "keys"; key_root.mkdir(); test_keys(key_root)
         imager_root = root / "imager"; imager_root.mkdir(); test_imager_key_and_firstrun(imager_root)
         invariant_root = root / "invariants"; invariant_root.mkdir(); test_active_state_and_markers(invariant_root)
+        machine_id_root = root / "machine-id"; machine_id_root.mkdir(); test_machine_id_sanitization(machine_id_root)
     test_accounts()
     test_standard_isolation()
     print("OK: generic image behavioral security tests")

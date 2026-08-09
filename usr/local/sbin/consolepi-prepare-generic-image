@@ -146,6 +146,7 @@ EOF
 cp "$IMAGER_FIRSTRUN" "$prep_dir/imager-firstrun"
 printf '%s\n' 'generic-image-systemd-v1' >"$prep_dir/imager-systemd-compat"
 printf '%s\n' "$boot_mount" >"$prep_dir/imager-boot-mount"
+printf '%s\n' uninitialized >"$prep_dir/machine-id"
 
 # Validate complete candidate SSH and systemd configurations before deletion.
 awk '$1 != "Include"' /etc/ssh/sshd_config >"$prep_dir/sshd_config"
@@ -193,7 +194,8 @@ find /var/log/consolepi /var/log/nginx -type f -delete 2>/dev/null || true
 journalctl --rotate >/dev/null 2>&1 || true
 journalctl --vacuum-time=1s >/dev/null 2>&1 || true
 rm -f /var/lib/systemd/random-seed /var/lib/dbus/machine-id
-truncate -s 0 /etc/machine-id
+install -o root -g root -m 0444 "$prep_dir/machine-id" /etc/.machine-id.consolepi-new
+mv -f /etc/.machine-id.consolepi-new /etc/machine-id
 
 # Network allowlist: discard every runtime profile and create one plain DHCP Ethernet profile.
 install -d -m 0700 /etc/NetworkManager/system-connections
