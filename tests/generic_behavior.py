@@ -211,6 +211,34 @@ def test_machine_id_sanitization(root):
     assert candidate.read_bytes() and candidate.read_bytes() != old_identity
 
 
+def test_legacy_cmdline_placeholder(root):
+    uid, gid = os.getuid(), os.getgid()
+    cmdline = root / "cmdline.txt"
+    assert imager_security.validate_legacy_cmdline(cmdline, uid, gid)
+    cmdline.write_bytes(imager_security.LEGACY_CMDLINE_PLACEHOLDER)
+    os.chmod(cmdline, 0o644)
+    assert imager_security.validate_legacy_cmdline(cmdline, uid, gid)
+    assert imager_security.remove_legacy_cmdline_placeholder(cmdline, uid, gid)
+    assert not cmdline.exists()
+    cmdline.write_text("different cmdline\n")
+    os.chmod(cmdline, 0o644)
+    expect_failure(imager_security.validate_legacy_cmdline, cmdline, uid, gid)
+    cmdline.unlink()
+    target = root / "target"
+    target.write_bytes(imager_security.LEGACY_CMDLINE_PLACEHOLDER)
+    cmdline.symlink_to(target)
+    expect_failure(imager_security.validate_legacy_cmdline, cmdline, uid, gid)
+    cmdline.unlink()
+    cmdline.write_bytes(imager_security.LEGACY_CMDLINE_PLACEHOLDER.rstrip(b"\n"))
+    os.chmod(cmdline, 0o644)
+    expect_failure(imager_security.validate_legacy_cmdline, cmdline, uid, gid)
+
+    sanitizer = (ROOT / "usr/local/sbin/consolepi-prepare-generic-image").read_text()
+    assert "validate_legacy_cmdline(sys.argv[1])" in sanitizer
+    assert "remove_legacy_cmdline_placeholder(sys.argv[1])" in sanitizer
+    assert "[ ! -e /boot/firstrun.sh ] && [ ! -L /boot/firstrun.sh ]" in sanitizer
+
+
 def test_imager_key_and_firstrun(root):
     key = make_key(root).strip()
     fixture = imager_security.expected_imager_2010_payload(key).encode()
@@ -324,6 +352,7 @@ def main():
         imager_root = root / "imager"; imager_root.mkdir(); test_imager_key_and_firstrun(imager_root)
         invariant_root = root / "invariants"; invariant_root.mkdir(); test_active_state_and_markers(invariant_root)
         machine_id_root = root / "machine-id"; machine_id_root.mkdir(); test_machine_id_sanitization(machine_id_root)
+        cmdline_root = root / "cmdline"; cmdline_root.mkdir(); test_legacy_cmdline_placeholder(cmdline_root)
     test_accounts()
     test_standard_isolation()
     print("OK: generic image behavioral security tests")

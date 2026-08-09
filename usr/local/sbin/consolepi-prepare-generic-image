@@ -62,7 +62,12 @@ case "$boot_mount" in /boot/*) ;; *) fail "firmware partition má nepodporovaný
 [ -d /var/lib/cloud ] && [ ! -L /var/lib/cloud ] && [ -w /var/lib/cloud ] ||
     fail '/var/lib/cloud chybí, je symlink nebo není zapisovatelný'
 [ ! -e /boot/firstrun.sh ] && [ ! -L /boot/firstrun.sh ] || fail '/boot/firstrun.sh už existuje'
-[ ! -e /boot/cmdline.txt ] && [ ! -L /boot/cmdline.txt ] || fail '/boot/cmdline.txt už existuje'
+python3 - /boot/cmdline.txt <<'PY' || fail '/boot/cmdline.txt není bezpečný Raspberry Pi OS placeholder'
+import sys
+sys.path.insert(0, "/usr/local/lib")
+from consolepi_imager_security import validate_legacy_cmdline
+validate_legacy_cmdline(sys.argv[1])
+PY
 python3 - "$IMAGER_IMPORT" <<'PY' || fail 'Imager importer není syntakticky platný'
 import ast, pathlib, sys
 ast.parse(pathlib.Path(sys.argv[1]).read_text())
@@ -222,6 +227,12 @@ PY
 install -m 0755 "$prep_dir/imager-firstrun" /boot/.firstrun.sh.consolepi-new
 mv -f /boot/.firstrun.sh.consolepi-new /boot/firstrun.sh
 boot_relative=${boot_mount#/boot/}
+python3 - /boot/cmdline.txt <<'PY'
+import sys
+sys.path.insert(0, "/usr/local/lib")
+from consolepi_imager_security import remove_legacy_cmdline_placeholder
+remove_legacy_cmdline_placeholder(sys.argv[1])
+PY
 ln -s "$boot_relative/cmdline.txt" /boot/cmdline.txt
 
 install -m 0600 "$prep_dir/imager-systemd-compat" "$STATE_DIR/.imager-systemd-compat.new"
