@@ -1,0 +1,199 @@
+#!/bin/sh
+# Sanitise an installed ConsolePi immediately before capturing a generic image.
+set -eu
+
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+export PATH
+umask 077
+
+STATE_DIR=/etc/consolepi
+RECOVERY=$STATE_DIR/generic-image-recovery.txt
+destructive=no
+prep_dir=
+
+cleanup()
+{
+    status=$?
+    trap - EXIT HUP INT TERM
+    [ -z "$prep_dir" ] || rm -rf "$prep_dir"
+    if [ "$status" -ne 0 ] && [ "$destructive" = yes ]; then
+        printf '\nSANITIZACE SELHALA. Zařízení ponechte odpojené od sítě.\n' >&2
+        printf 'Z lokální konzole opravte uvedenou chybu a spusťte tento příkaz znovu.\n' >&2
+        printf 'Podrobný postup obnovy: %s\n' "$RECOVERY" >&2
+    fi
+    exit "$status"
+}
+trap cleanup EXIT HUP INT TERM
+
+fail() { printf 'Preflight generic image: %s\n' "$*" >&2; exit 1; }
+
+[ "$(id -u)" -eq 0 ] || fail 'spusťte jako root (sudo)'
+[ "$(id -u consolepi 2>/dev/null)" = 1000 ] || fail 'účet consolepi musí mít UID 1000'
+id console >/dev/null 2>&1 || fail 'chybí účet console'
+getent group consolepi-web >/dev/null 2>&1 || fail 'chybí skupina consolepi-web'
+[ -x /usr/local/sbin/consolepi-generic-image-firstboot ] || fail 'chybí first-boot program'
+[ -f /etc/systemd/system/consolepi-generic-image-firstboot.service ] || fail 'chybí first-boot unit'
+[ -w /etc ] && [ -w "$STATE_DIR" ] && [ -w /home/consolepi ] || fail 'potřebné filesystémy nejsou zapisovatelné'
+[ "$(df -Pk "$STATE_DIR" | awk 'NR==2 {print $4}')" -ge 10240 ] || fail 'je potřeba alespoň 10 MiB volného místa'
+for command in awk cp df find getent grep hostnamectl install journalctl mktemp mv openssl passwd python3 sshd ssh-keygen stat systemctl systemd-analyze truncate; do
+    command -v "$command" >/dev/null 2>&1 || fail "chybí utilita $command"
+done
+
+unexpected_accounts=$(python3 - <<'PY'
+import sys
+sys.path.insert(0, "/usr/local/lib")
+from consolepi_firstboot_security import unexpected_login_accounts
+print(" ".join(unexpected_login_accounts(open("/etc/passwd").read())))
+PY
+)
+[ -z "$unexpected_accounts" ] || fail "neočekávané login-capable účty: $unexpected_accounts"
+
+prep_dir=$(mktemp -d "$STATE_DIR/.generic-prep.XXXXXX")
+cat >"$prep_dir/generic-ssh.conf" <<'EOF'
+# Aktivováno pouze na sanitizované generic image.
+AllowUsers consolepi console
+PermitRootLogin no
+Match User consolepi
+    AuthenticationMethods publickey
+    PubkeyAuthentication yes
+    PasswordAuthentication no
+    KbdInteractiveAuthentication no
+Match all
+EOF
+cat >"$prep_dir/dependency.conf" <<'EOF'
+[Unit]
+Requires=consolepi-generic-image-firstboot.service
+After=consolepi-generic-image-firstboot.service
+EOF
+cat >"$prep_dir/radius.json" <<'EOF'
+{"primary_host":"","primary_port":1812,"primary_secret_set":false,"secondary_host":"","secondary_port":1812,"secondary_secret_set":false,"timeout":3,"retries":1,"accounting":false}
+EOF
+printf '%s\n' '{"primary":"","secondary":""}' >"$prep_dir/radius-secrets.json"
+printf '%s\n' '# RADIUS není v generic image nastaven.' >"$prep_dir/pam_radius_auth.conf"
+cat >"$prep_dir/snmpv3.json" <<'EOF'
+{"enabled":false,"username":"","auth_protocol":"SHA-256","privacy_protocol":"AES"}
+EOF
+printf '%s\n' '{"auth_password":"","privacy_password":""}' >"$prep_dir/snmpv3-secrets.json"
+cat >"$prep_dir/proxy.json" <<'EOF'
+{"enabled":false,"scheme":"http","host":"","port":8080,"username":"","password":"","no_proxy":"localhost,127.0.0.1,::1"}
+EOF
+printf '%s\n' '{"sources":[]}' >"$prep_dir/access-sources.json"
+printf '%s\n' '{"display_name":"ConsolePi","location":"","description":"Sériový konzolový server"}' >"$prep_dir/identity.json"
+printf '%s\n' '{}' >"$prep_dir/labels.json"
+printf '%s\n' 'AUTH_MODE=local_key' >"$prep_dir/auth.conf"
+printf '%s\n' '{"state":"pending","reason":"generic_image"}' >"$prep_dir/generic-image.json"
+printf '%s\n' '{"state":"pending","reason":"generic_image"}' >"$prep_dir/firstboot.json"
+cat >"$prep_dir/wired-generic.nmconnection" <<'EOF'
+[connection]
+id=Wired connection 1
+type=ethernet
+interface-name=eth0
+autoconnect=true
+
+[ethernet]
+
+[ipv4]
+method=auto
+
+[ipv6]
+method=auto
+addr-gen-mode=default
+EOF
+cat >"$prep_dir/recovery.txt" <<'EOF'
+ConsolePi generic-image recovery (pouze z lokální konzole)
+1. Zařízení nepřipojujte do sítě a zkontrolujte chybu předchozího běhu.
+2. Po opravě spusťte znovu: sudo consolepi-prepare-generic-image
+3. Chcete-li přípravu zrušit, obnovte vlastní veřejný klíč do
+   /home/consolepi/.ssh/authorized_keys, odstraňte generic drop-in soubory
+   v /etc/systemd/system/{ssh,nginx,consolepi-web}.service.d, zakažte
+   consolepi-generic-image-firstboot.service, spusťte systemctl daemon-reload
+   a služby povolte teprve po ověření SSH/TLS/web konfigurace.
+EOF
+
+# Validate complete candidate SSH and systemd configurations before deletion.
+awk '$1 != "Include"' /etc/ssh/sshd_config >"$prep_dir/sshd_config"
+printf 'Include %s\n' "$prep_dir/generic-ssh.conf" >>"$prep_dir/sshd_config"
+printf '%s\n' 'Include /etc/ssh/sshd_config.d/*.conf' >>"$prep_dir/sshd_config"
+sshd -t -f "$prep_dir/sshd_config" || fail 'kandidátní generic SSH konfigurace není platná'
+for service in ssh nginx consolepi-web; do
+    source_unit=/etc/systemd/system/$service.service
+    [ -f "$source_unit" ] || source_unit=/lib/systemd/system/$service.service
+    [ -f "$source_unit" ] || source_unit=/usr/lib/systemd/system/$service.service
+    [ -f "$source_unit" ] || fail "chybí systemd unit $service.service"
+    cp "$source_unit" "$prep_dir/$service.service"
+    cat "$prep_dir/dependency.conf" >>"$prep_dir/$service.service"
+done
+systemd-analyze verify /etc/systemd/system/consolepi-generic-image-firstboot.service \
+    "$prep_dir/ssh.service" "$prep_dir/nginx.service" "$prep_dir/consolepi-web.service" >/dev/null ||
+    fail 'kandidátní generic systemd konfigurace není platná'
+
+printf '%s\n' 'Tento krok nevratně odstraní klíče, identity a lokální tajemství z masteru.'
+printf '%s' 'Pro pokračování napište GENERIC: '
+IFS= read -r confirmation
+[ "$confirmation" = GENERIC ] || { printf '%s\n' 'Zrušeno.'; exit 0; }
+
+destructive=yes
+install -m 0600 "$prep_dir/recovery.txt" "$RECOVERY"
+systemctl disable --now ssh nginx consolepi-web consolepi-port-monitor \
+    consolepi-update-check.timer snmpd lldpd >/dev/null 2>&1 || true
+
+# Remove password hashes, then lock both accounts.
+passwd -d consolepi >/dev/null
+passwd -l consolepi >/dev/null
+passwd -d console >/dev/null 2>&1 || true
+passwd -l console >/dev/null 2>&1 || true
+
+# No pre-existing login key may survive in a generic image.
+find /root /home -xdev -type f -path '*/.ssh/*' -delete 2>/dev/null || true
+find /root /home -xdev -type f \( -name '.bash_history' -o -name '.zsh_history' -o -name '.python_history' \) -delete 2>/dev/null || true
+rm -f /etc/ssh/ssh_host_* /etc/consolepi/tls/consolepi.key \
+    /etc/consolepi/tls/consolepi.crt /etc/consolepi/web.secret /etc/consolepi/web.auth
+rm -f /etc/apt/apt.conf.d/90consolepi-proxy /var/lib/snmp/snmpd.conf
+rm -rf /var/backups/consolepi
+rm -f /etc/udev/rules.d/70-consolepi.rules
+find /var/log/consolepi /var/log/nginx -type f -delete 2>/dev/null || true
+journalctl --rotate >/dev/null 2>&1 || true
+journalctl --vacuum-time=1s >/dev/null 2>&1 || true
+rm -f /var/lib/systemd/random-seed /var/lib/dbus/machine-id
+truncate -s 0 /etc/machine-id
+
+# Network allowlist: discard every runtime profile and create one plain DHCP Ethernet profile.
+install -d -m 0700 /etc/NetworkManager/system-connections
+find /etc/NetworkManager/system-connections -mindepth 1 -delete 2>/dev/null || true
+install -m 0600 "$prep_dir/wired-generic.nmconnection" \
+    "/etc/NetworkManager/system-connections/Wired connection 1.nmconnection"
+find /etc/wpa_supplicant /etc/openvpn /etc/wireguard -mindepth 1 -delete 2>/dev/null || true
+rm -f /etc/ppp/chap-secrets /etc/ppp/pap-secrets
+find /etc/ppp/peers -mindepth 1 -delete 2>/dev/null || true
+find /var/lib/dhcp /var/lib/NetworkManager -type f -delete 2>/dev/null || true
+hostnamectl set-hostname consolepi
+find /var/lib/consolepi-web -mindepth 1 -delete 2>/dev/null || true
+
+# Install reset configuration atomically from files prepared during preflight.
+for name in radius.json radius-secrets.json pam_radius_auth.conf snmpv3.json snmpv3-secrets.json proxy.json access-sources.json identity.json labels.json auth.conf firstboot.json; do
+    mode=0600
+    case "$name" in radius.json|access-sources.json|identity.json|labels.json|auth.conf) mode=0644 ;; esac
+    install -m "$mode" "$prep_dir/$name" "$STATE_DIR/.$name.new"
+    mv -f "$STATE_DIR/.$name.new" "$STATE_DIR/$name"
+done
+python3 - "$STATE_DIR/generic-image.json" <<'PY'
+import sys
+sys.path.insert(0, "/usr/local/lib")
+from consolepi_firstboot_security import write_generic_state
+write_generic_state(sys.argv[1], "pending")
+PY
+
+install -d -m 0755 /etc/ssh/sshd_config.d
+install -m 0644 "$prep_dir/generic-ssh.conf" /etc/ssh/sshd_config.d/39-consolepi-generic-image.conf
+for service in ssh nginx consolepi-web; do
+    install -d -m 0755 "/etc/systemd/system/$service.service.d"
+    install -m 0644 "$prep_dir/dependency.conf" "/etc/systemd/system/$service.service.d/consolepi-generic-image.conf"
+done
+
+systemctl daemon-reload
+systemctl enable consolepi-generic-image-firstboot.service ssh nginx \
+    consolepi-web consolepi-port-monitor consolepi-update-check.timer >/dev/null
+
+printf '%s\n' 'Master je sanitizován. Vypněte jej bez dalšího síťového startu:'
+printf '%s\n' '  systemctl poweroff'
+printf '%s\n' 'Teprve potom pořiďte image vypnuté karty.'

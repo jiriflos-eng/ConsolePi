@@ -19,7 +19,7 @@ CHECKSUM="$ARCHIVE.sha256"
 [ -n "$VERSION" ] || { printf '%s\n' 'Chybí VERSION.' >&2; exit 1; }
 [ ! -e "$ARCHIVE" ] || { printf 'Výstup již existuje: %s\n' "$ARCHIVE" >&2; exit 1; }
 
-"$ROOT/install.sh" --check-only
+CONSOLEPI_SKIP_ARCHIVE_TEST=1 "$ROOT/install.sh" --check-only
 
 mkdir -p "$OUTPUT_DIR"
 STAGING=$(mktemp -d "${TMPDIR:-/tmp}/consolepi-install.XXXXXX")

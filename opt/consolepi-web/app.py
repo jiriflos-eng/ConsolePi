@@ -639,11 +639,28 @@ def login():
 @APP.route("/setup", methods=["GET", "POST"])
 def setup():
     state = firstboot_status()
+    ownership_required = bool(state.get("generic_claim_required"))
     if request.method == "POST":
         if not state.get("pending"):
             return redirect(url_for("login"))
         if not setup_csrf_valid():
             return "Neplatný CSRF token.", 403
+        if ownership_required and not session.get("setup_provisioning_session"):
+            token = request.form.get("ownership_token", "").strip()
+            result = maintenance("firstboot", "ownership-verify", {"token": token})
+            if result.returncode:
+                flash(result.stderr.strip() or "Vlastnictví SSH klíče nebylo ověřeno.", "error")
+            else:
+                try:
+                    session_id = json.loads(result.stdout)["session_id"]
+                except (json.JSONDecodeError, KeyError, TypeError):
+                    flash("Ověření nevrátilo platnou provisioning session.", "error")
+                    return redirect(url_for("setup"))
+                session.clear()
+                session["setup_provisioning_session"] = session_id
+                session["setup_csrf"] = secrets.token_urlsafe(32)
+                flash("Držení privátního SSH klíče bylo ověřeno.", "success")
+            return redirect(url_for("setup"))
         password = request.form.get("web_password", "")
         confirmation = request.form.get("web_password_confirmation", "")
         if password != confirmation:
@@ -653,8 +670,11 @@ def setup():
         else:
             key_mode = request.form.get("admin_key_mode", "generate")
             public_key = request.form.get("admin_public_key", "").strip()
-            if key_mode not in {"existing", "generate"}:
+            if key_mode not in {"keep", "existing", "generate"}:
                 flash("Zvolte způsob vytvoření administrativního SSH přístupu.", "error")
+                return redirect(url_for("setup"))
+            if key_mode == "keep" and not state.get("admin_key_present"):
+                flash("Stávající validní administrativní klíč není dostupný.", "error")
                 return redirect(url_for("setup"))
             if key_mode == "existing" and not public_key:
                 flash("Vložte veřejný SSH klíč nebo zvolte vytvoření nového klíče.", "error")
@@ -666,14 +686,19 @@ def setup():
                 "location": request.form.get("location", ""),
                 "description": request.form.get("description", ""),
                 "admin_public_key": public_key if key_mode == "existing" else "",
+                "provisioning_session": session.get("setup_provisioning_session", ""),
+                "key_mode": key_mode,
             }, timeout=120)
             if result.returncode:
                 flash(result.stderr.strip() or "Průvodce nelze dokončit.", "error")
             else:
+                provisioning_session = session.get("setup_provisioning_session", "")
                 session.clear()
                 session["setup_finished"] = True
                 session["setup_csrf"] = secrets.token_urlsafe(32)
                 session["setup_admin_key_pending"] = key_mode == "generate"
+                if provisioning_session and key_mode == "generate":
+                    session["setup_provisioning_session"] = provisioning_session
                 return render_template(
                     "setup_complete.html",
                     storage=maintenance_status("storage"),
@@ -698,6 +723,8 @@ def setup():
         network=network_status(),
         identity=identity,
         hostname=command("hostname").stdout.strip(),
+        ownership_required=ownership_required and not session.get("setup_provisioning_session"),
+        admin_key_present=bool(state.get("admin_key_present")),
     )
 
 
@@ -729,7 +756,10 @@ def setup_admin_key_generate():
         serialization.Encoding.OpenSSH,
         serialization.PublicFormat.OpenSSH,
     ).decode("ascii") + " consolepi-firstboot"
-    result = maintenance("firstboot", "admin-key-install", {"public_key": public_key})
+    result = maintenance("firstboot", "admin-key-install", {
+        "public_key": public_key,
+        "provisioning_session": session.get("setup_provisioning_session", ""),
+    })
     if result.returncode:
         flash(result.stderr.strip() or "Nelze uložit veřejný SSH klíč správce.", "error")
         return redirect(url_for("setup"))

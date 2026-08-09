@@ -1,0 +1,108 @@
+#!/bin/sh
+# Complete a sanitised generic image after Raspberry Pi Imager has injected
+# the administrator's public key into the existing UID 1000 account.
+set -eu
+
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+export PATH
+umask 077
+
+STATE=/etc/consolepi/generic-image.json
+FIRSTBOOT=/etc/consolepi/firstboot.json
+ADMIN_USER=consolepi
+ADMIN_KEYS=/home/consolepi/.ssh/authorized_keys
+CONSOLE_KEYS=/home/console/.ssh/authorized_keys
+TLS_DIR=/etc/consolepi/tls
+CLAIM_TOKEN=/home/consolepi/.consolepi-firstboot-token
+CLAIM_METADATA=/etc/consolepi/firstboot-claim.json
+
+fail()
+{
+    logger -p authpriv.err -t consolepi-generic-firstboot -- "$*" || true
+    printf 'ConsolePi generic-image first boot: %s\n' "$*" >&2
+    exit 1
+}
+
+state=$(python3 - "$FIRSTBOOT" "$STATE" <<'PY'
+import sys
+sys.path.insert(0, "/usr/local/lib")
+from consolepi_firstboot_security import generic_state
+print(generic_state(sys.argv[1], sys.argv[2]))
+PY
+)
+case "$state" in
+    pending) ;;
+    standard|claim_pending|key_generation_pending|complete) exit 0 ;;
+    *) fail 'generic-image stav chybí nebo je poškozený' ;;
+esac
+[ "$(id -u "$ADMIN_USER")" = 1000 ] || fail 'účet consolepi nemá UID 1000; klíč Imageru nelze bezpečně přiřadit'
+
+case $(passwd -S "$ADMIN_USER" 2>/dev/null | awk '{print $2}') in
+    L|LK) ;;
+    *) fail 'heslo účtu consolepi není uzamčené' ;;
+esac
+
+key=$(python3 - "$ADMIN_KEYS" "$(id -u "$ADMIN_USER")" <<'PY'
+import sys
+sys.path.insert(0, "/usr/local/lib")
+from consolepi_firstboot_security import validate_authorized_key
+print(validate_authorized_key(sys.argv[1], int(sys.argv[2])))
+PY
+) || fail 'Imager nedodal právě jeden bezpečný veřejný klíč ssh-ed25519'
+
+install -d -o console -g console -m 0700 /home/console/.ssh
+tmp_console_key=$(mktemp /home/console/.ssh/.authorized_keys.XXXXXX)
+printf '%s\n' "$key" >"$tmp_console_key"
+chown console:console "$tmp_console_key"
+chmod 0600 "$tmp_console_key"
+mv -f "$tmp_console_key" "$CONSOLE_KEYS"
+chown console:console "$CONSOLE_KEYS"
+chmod 0600 "$CONSOLE_KEYS"
+unset key
+
+# The distributable image contains none of these private values. Generate a
+# fresh identity only after the administrator key has passed validation.
+ssh-keygen -A >/dev/null
+install -d -o root -g root -m 0755 "$TLS_DIR"
+tls_ip=$(hostname -I 2>/dev/null | awk '{print $1}')
+tls_san="DNS:$(hostname),DNS:$(hostname).local"
+[ -z "$tls_ip" ] || tls_san="$tls_san,IP:$tls_ip"
+openssl req -x509 -newkey rsa:2048 -sha256 -nodes -days 825 \
+    -subj "/CN=$(hostname)" -addext "subjectAltName=$tls_san" \
+    -keyout "$TLS_DIR/consolepi.key" -out "$TLS_DIR/consolepi.crt" >/dev/null 2>&1
+chmod 0600 "$TLS_DIR/consolepi.key"
+chmod 0644 "$TLS_DIR/consolepi.crt"
+python3 -c 'import secrets; print(secrets.token_hex(32))' >/etc/consolepi/web.secret
+chown root:consolepi-web /etc/consolepi/web.secret
+chmod 0640 /etc/consolepi/web.secret
+
+# This per-device claim token is created only after the Imager key is valid.
+# It is readable solely through an SSH login proving possession of that key.
+python3 - "$CLAIM_TOKEN" "$CLAIM_METADATA" <<'PY'
+import sys
+sys.path.insert(0, "/usr/local/lib")
+from consolepi_firstboot_security import create_token
+create_token(sys.argv[1], sys.argv[2])
+PY
+chown consolepi:consolepi "$CLAIM_TOKEN"
+chmod 0400 "$CLAIM_TOKEN"
+/usr/local/sbin/consolepi-control auth sync >/dev/null || fail 'nelze aktivovat klíčovou autentizaci konzolového účtu'
+
+# Rebuild the generic firewall from the Ethernet DHCP network instead of
+# carrying the master device's allow-list into a different deployment.
+attempt=0
+while ! ip -o -4 address show dev eth0 scope global 2>/dev/null | grep -q ' inet '; do
+    attempt=$((attempt + 1))
+    [ "$attempt" -lt 31 ] || fail 'ethernet DHCP adresa není dostupná pro bezpečné nastavení firewallu'
+    sleep 1
+done
+/usr/local/sbin/consolepi-control access migrate >/dev/null || fail 'nelze nastavit firewall pro aktuální ethernetovou síť'
+
+python3 - "$STATE" <<'PY'
+import sys
+sys.path.insert(0, "/usr/local/lib")
+from consolepi_firstboot_security import write_generic_state
+write_generic_state(sys.argv[1], "claim_pending")
+PY
+rm -f /etc/consolepi/generic-image-recovery.txt
+logger -p authpriv.notice -t consolepi 'GENERIC_IMAGE_FIRSTBOOT_COMPLETE key_type=ed25519'

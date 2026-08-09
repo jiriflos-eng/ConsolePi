@@ -53,6 +53,10 @@ V Raspberry Pi Imager vyberte Raspberry Pi OS Lite (64-bit). V rozšířeném na
 - SSH: **povolit autentizaci veřejným klíčem** a vložit obsah souboru `consolepi-admin.pub`;
 - síť ponechte jako **DHCP**.
 
+U hotové generic image uživatele ani heslo nenastavujte. V Imageru zapněte
+pouze SSH s autentizací veřejným klíčem a vložte jeden klíč Ed25519. Účet
+`consolepi` už image obsahuje a jeho systémové heslo je uzamčené.
+
 Zapište kartu, vložte ji do Raspberry Pi a připojte Ethernet. IP adresu zjistíte v DHCP serveru nebo routeru.
 
 ## 3. Povinná aktualizace Raspberry Pi OS

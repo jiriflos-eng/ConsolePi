@@ -34,11 +34,12 @@ Its [SHA-256 checksum](downloads/ConsolePi-1.5.2-install.tar.gz.sha256) is
 published alongside it.
 
 1. Use Raspberry Pi Imager to write **Raspberry Pi OS Lite (64-bit)** to the
-   SD card. Configure an administrator named `consolepi`, enable SSH and use
-   DHCP for the initial network connection.
+   SD card. Configure an administrator named `consolepi`, enable SSH with
+   public-key authentication, and use DHCP for the initial network connection.
+   The separate generic ConsolePi image must instead follow its key-only guide.
 2. Boot the Pi and update the base operating system:
 
-       ssh consolepi@PI_ADDRESS
+       ssh -i "$HOME/.ssh/consolepi-admin" consolepi@PI_ADDRESS
        sudo apt update
        sudo apt full-upgrade -y
        sudo reboot

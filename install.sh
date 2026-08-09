@@ -121,7 +121,7 @@ backup_if_exists()
     fi
 }
 
-install -d -m 0755 /etc/consolepi /etc/ssh/sshd_config.d /etc/profile.d /usr/local/sbin /usr/share/consolepi
+install -d -m 0755 /etc/consolepi /etc/ssh/sshd_config.d /etc/profile.d /usr/local/sbin /usr/local/lib /usr/share/consolepi
 install -d -m 0755 /etc/udev/rules.d /etc/tmpfiles.d /etc/logrotate.d
 install -d -m 0755 /etc/systemd/system /etc/nginx/sites-available /etc/sudoers.d
 install -d -m 0755 /etc/consolepi/tls
@@ -150,6 +150,9 @@ for target in \
     /usr/local/sbin/consolepi-log-maintain \
     /usr/local/sbin/consolepi-transcript-writer \
     /usr/local/sbin/consolepi-update-check \
+    /usr/local/sbin/consolepi-generic-image-firstboot \
+    /usr/local/sbin/consolepi-prepare-generic-image \
+    /usr/local/lib/consolepi_firstboot_security.py \
     /usr/local/sbin/consolepi-snmp-pass-persist \
     /usr/local/sbin/consolepi-release \
     /etc/profile.d/consolepi-status.sh \
@@ -160,6 +163,7 @@ for target in \
     /etc/systemd/system/consolepi-update-check.service \
     /etc/systemd/system/consolepi-update-check.timer \
     /etc/systemd/system/consolepi-system-upgrade.service \
+    /etc/systemd/system/consolepi-generic-image-firstboot.service \
     /etc/nginx/sites-available/consolepi \
     /etc/sudoers.d/consolepi-web \
     /etc/pam.d/sshd
@@ -242,6 +246,9 @@ install -m 0755 "$ROOT/usr/local/sbin/consolepi-reset-web-password" /usr/local/s
 install -m 0755 "$ROOT/usr/local/sbin/consolepi-log-maintain" /usr/local/sbin/consolepi-log-maintain
 install -m 0755 "$ROOT/usr/local/sbin/consolepi-transcript-writer" /usr/local/sbin/consolepi-transcript-writer
 install -m 0755 "$ROOT/usr/local/sbin/consolepi-update-check" /usr/local/sbin/consolepi-update-check
+install -m 0755 "$ROOT/usr/local/sbin/consolepi-generic-image-firstboot" /usr/local/sbin/consolepi-generic-image-firstboot
+install -m 0755 "$ROOT/usr/local/sbin/consolepi-prepare-generic-image" /usr/local/sbin/consolepi-prepare-generic-image
+install -m 0644 "$ROOT/usr/local/lib/consolepi_firstboot_security.py" /usr/local/lib/consolepi_firstboot_security.py
 install -m 0755 "$ROOT/usr/local/sbin/consolepi-snmp-pass-persist" /usr/local/sbin/consolepi-snmp-pass-persist
 install -m 0755 "$ROOT/usr/local/sbin/consolepi-release" /usr/local/sbin/consolepi-release
 install -m 0755 "$ROOT/usr/local/sbin/consolepi-release-runner" /usr/local/sbin/consolepi-release-runner
@@ -257,6 +264,7 @@ install -m 0644 "$ROOT/etc/systemd/system/consolepi-port-monitor.service" /etc/s
 install -m 0644 "$ROOT/etc/systemd/system/consolepi-update-check.service" /etc/systemd/system/consolepi-update-check.service
 install -m 0644 "$ROOT/etc/systemd/system/consolepi-update-check.timer" /etc/systemd/system/consolepi-update-check.timer
 install -m 0644 "$ROOT/etc/systemd/system/consolepi-system-upgrade.service" /etc/systemd/system/consolepi-system-upgrade.service
+install -m 0644 "$ROOT/etc/systemd/system/consolepi-generic-image-firstboot.service" /etc/systemd/system/consolepi-generic-image-firstboot.service
 install -m 0644 "$ROOT/etc/nginx/sites-available/consolepi" /etc/nginx/sites-available/consolepi
 install -m 0440 "$ROOT/etc/sudoers.d/consolepi-web" /etc/sudoers.d/consolepi-web
 if [ "$UPDATE_MODE" = yes ]; then

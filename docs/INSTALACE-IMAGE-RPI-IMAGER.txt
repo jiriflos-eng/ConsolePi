@@ -17,6 +17,7 @@ CO JE POTŘEBA
 - ethernetový kabel do sítě s DHCP (doporučeno pro první spuštění)
 - počítač s Raspberry Pi Imagerem a SSH klientem
 - soubor ConsolePi-...img.xz
+- vlastní Ed25519 veřejný SSH klíč správce (soubor s příponou .pub)
 
 KROK 1 – ZÁPIS IMAGE
 ---------------------
@@ -27,11 +28,14 @@ KROK 1 – ZÁPIS IMAGE
 5. Zcela dole zvolte „Use custom“ / „Použít vlastní image“.
 6. Vyberte soubor ConsolePi-...img.xz.
 7. Klikněte na „Choose Storage“ a vyberte správnou SD kartu.
-8. Volitelně otevřete nastavení ozubeným kolečkem:
-   - nastavte hostname, pokud jej chcete změnit už před prvním startem,
-   - nastavte uživatele consolepi a bezpečné heslo,
-   - zapněte SSH a zvolte přihlášení heslem nebo veřejným klíčem,
-   - pro první instalaci je nejjednodušší „Use password authentication“.
+8. Otevřete nastavení OS customizace:
+   - v části General NEZAPÍNEJTE „Set username and password“; účet consolepi
+     je už v image a jeho systémové heslo je uzamčené,
+   - v Services zapněte SSH, vyberte výhradně „Allow public-key
+     authentication only“ a vložte jeden vlastní veřejný klíč Ed25519,
+   - nikdy nevkládejte soukromý klíč (soubor bez přípony .pub),
+   - hostname, Wi-Fi a ostatní volby ponechte beze změny; první připojení
+     generic image je určené pro ethernet s DHCP.
 9. Klikněte na „Write“ a potvrďte smazání SD karty.
 10. Vyčkejte na dokončení zápisu i ověření („Verification successful“).
 11. SD kartu bezpečně vysuňte.
@@ -45,20 +49,33 @@ KROK 2 – PRVNÍ START
 
 KROK 3 – DOKONČENÍ VE WEBU
 ---------------------------
-1. V prohlížeči otevřete:
+1. Nejdříve prokažte držení privátního klíče. Přihlaste se přes SSH a načtěte
+   jednorázový token vytvořený až na tomto zařízení:
+
+   macOS / Linux:
+       ssh -i "$HOME/.ssh/consolepi-admin" consolepi@IP_ADRESA_RPI "cat ~/.consolepi-firstboot-token"
+
+   Windows PowerShell:
+       ssh -i "$env:USERPROFILE\.ssh\consolepi-admin" consolepi@IP_ADRESA_RPI "cat ~/.consolepi-firstboot-token"
+
+2. V prohlížeči otevřete:
 
    https://IP_ADRESA_RPI/
 
-2. Prohlížeč upozorní na vlastní HTTPS certifikát. To je při prvním spuštění
+3. Prohlížeč upozorní na vlastní HTTPS certifikát. To je při prvním spuštění
    očekávané; pokračujte na stránku zařízení.
-3. Dokončete průvodce:
+4. Vložte jednorázový token. Bez něj se konfigurační formulář nezobrazí.
+   Token není v distribuované image a lze jej přečíst jen po SSH autentizaci
+   privátním klíčem odpovídajícím klíči z Imageru. Platí 10 minut a první
+   úspěšné ověření jej nevratně spotřebuje; průvodce pak používá novou
+   serverovou provisioning session s vlastní desetiminutovou expirací.
+5. Dokončete průvodce:
    - nastavte heslo webové administrace,
    - vyplňte název, hostname a umístění zařízení,
-   - nastavte administrativní SSH přístup:
-     a) vložte existující veřejný klíč (.pub), nebo
-     b) nechte vytvořit osobní klíč a ihned jej jednou stáhněte,
+   - výchozí volbou „Ponechat stávající klíč“ zachovejte klíč z Imageru;
+     případné nahrazení je dostupné až po ověření jednorázovým tokenem,
    - případně potvrďte rozšíření datového oddílu na celou kapacitu SD karty.
-4. Po dokončení se otevře veřejný přehled ConsolePi. Tlačítkem „Admin“ se
+6. Po dokončení se token smaže a otevře se veřejný přehled ConsolePi. Tlačítkem „Admin“ se
    přihlásíte do administrace heslem zvoleným v průvodci.
 
 KROK 4 – SSH PO PRVNÍM SPUŠTĚNÍ
@@ -80,10 +97,6 @@ macOS / Linux:
 
 Windows PowerShell:
     ssh -i "$env:USERPROFILE\.ssh\consolepi-admin" consolepi@IP_ADRESA_RPI
-
-Pokud jste v Raspberry Pi Imageru nastavili SSH přihlášení heslem, použijte:
-
-    ssh consolepi@IP_ADRESA_RPI
 
 KROK 5 – USB KONZOLE
 --------------------
@@ -108,7 +121,7 @@ nebo později v administraci ConsolePi v části Systém.
 RYCHLÁ DIAGNOSTIKA
 ------------------
 Administrativní SSH:
-    ssh consolepi@IP_ADRESA_RPI
+    ssh -i CESTA_K_PRIVATNIMU_KLICI consolepi@IP_ADRESA_RPI
 
 Verze ConsolePi:
     cat /usr/share/consolepi/VERSION
@@ -119,3 +132,54 @@ Stav služeb:
 Diagnostika ConsolePi:
     sudo consolepi-diagnose
 
+PŘÍPRAVA GENERIC IMAGE (PRO SPRÁVCE VYDÁNÍ)
+-------------------------------------------
+Tento oddíl je pouze pro vytvoření distribuovatelného masteru. Na běžně
+provozovaném ConsolePi jej nespouštějte.
+
+1. Na referenčním zařízení s aktuální instalací ověřte, že účet consolepi má
+   UID 1000 a že jsou nainstalované soubory generic-image režimu.
+2. Z lokální konzole spusťte:
+
+       sudo consolepi-prepare-generic-image
+
+   a potvrďte textem GENERIC. Program nejprve provede preflight a připraví
+   náhradní konfigurace. Potom odstraní hashe a uzamkne systémová hesla,
+   odstraní všechny uživatelské SSH klíče, hostitelské SSH a TLS klíče,
+   webová, RADIUS, SNMPv3, proxy a síťová tajemství, zálohy, historie, logy,
+   machine-id a DHCP lease. Integrace, identita, firewall allowlist a ethernet
+   se resetují do neaktivního generického stavu s DHCP.
+3. Ihned poté zařízení vypněte zobrazeným příkazem. Sanitizovaný master už
+   znovu nespouštějte před pořízením image vypnuté karty.
+4. Image před zveřejněním připojte jen pro čtení a ověřte, že neobsahuje
+   žádný authorized_keys, ssh_host_* ani consolepi.key a že /etc/machine-id
+   je prázdný.
+
+Při prvním startu nejprve doběhne customizace Raspberry Pi Imageru. Služba
+ConsolePi potom přijme právě jeden validní veřejný klíč ssh-ed25519 z účtu
+consolepi, zkopíruje jej technickému účtu console a vytvoří nové hostitelské
+SSH klíče, TLS klíč a webové tajemství. Pokud klíč chybí, je neplatný nebo má
+nebezpečná oprávnění, SSH i web zůstanou zastavené. Po úspěchu vznikne
+jednorázový token čitelný pouze účtem consolepi přes ověřené SSH spojení.
+
+Pokud se first boot přeruší před ověřením tokenu, spusťte zařízení znovu;
+služba bezpečně pokračuje podle uloženého stavu. Vypršel-li token nebo je-li
+`generic-image.json` chybějící či poškozený, provisioning zůstane zablokovaný.
+Vypršel-li dosud nepoužitý token, lze jej z fyzické lokální konzole bezpečně
+rotovat příkazem `sudo consolepi-maintenance firstboot token-reset`; novou
+hodnotu potom načtěte obvyklým SSH příkazem. Při poškozeném stavu ověřte
+disk z lokální konzole a po odstranění neúplných runtime credentials zopakujte
+přípravu generic image; nevytvářejte ručně náhradní token. Selže-li
+regenerace SSH nebo TLS identity, ponechte zařízení mimo síť, opravte příčinu
+(typicky plný/read-only filesystem nebo chybnou konfiguraci) a spusťte
+provisioning znovu z lokální konzole. Aktivní klíče se při neúspěšném
+nahrazení obnoví z lokální zálohy.
+
+OBNOVA PO SELHÁNÍ SANITIZACE
+----------------------------
+Sanitizace je záměrně fail-closed. Při chybě zařízení nepřipojujte do sítě a
+pokračujte pouze z lokální konzole. Skript vypíše příčinu a uloží postup do
+`/etc/consolepi/generic-image-recovery.txt`. Preferovaný postup je odstranit
+příčinu (například nedostatek místa nebo chybnou systemd jednotku) a spustit
+`sudo consolepi-prepare-generic-image` znovu. Sanitizovaný master nepoužívejte
+v provozu a image z něj nevytvářejte, dokud skript neskončí úspěšně.

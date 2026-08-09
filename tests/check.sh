@@ -21,6 +21,8 @@ for file in \
     "$ROOT/usr/local/sbin/consolepi-diagnose" \
     "$ROOT/usr/local/sbin/consolepi-login-status" \
     "$ROOT/usr/local/sbin/consolepi-admin-menu" \
+    "$ROOT/usr/local/sbin/consolepi-generic-image-firstboot" \
+    "$ROOT/usr/local/sbin/consolepi-prepare-generic-image" \
     "$ROOT/etc/profile.d/consolepi-status.sh" \
     "$ROOT/bootstrap-install.sh" \
     "$ROOT/tools/build-install-bundle.sh" \
@@ -51,6 +53,11 @@ python3 -c 'import ast, pathlib; [ast.parse(pathlib.Path(p).read_text()) for p i
 )]' &&
     ok "Python syntax" ||
     bad "Python syntax"
+
+python3 "$ROOT/tests/generic_behavior.py" || bad "generic image behavioral security tests"
+if [ "${CONSOLEPI_SKIP_ARCHIVE_TEST:-0}" != 1 ]; then
+    "$ROOT/tests/check-install-archive.sh" || bad "install archive credential scan"
+fi
 
 grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' "$ROOT/VERSION" &&
     grep -q 'consolepi-update-1' "$ROOT/usr/local/sbin/consolepi-release" &&
@@ -112,6 +119,29 @@ grep -q '^AUTH_MODE=local_key$' "$ROOT/etc/consolepi/auth.conf" &&
 grep -q '^Match User console LocalPort 2201$' "$ROOT/etc/ssh/sshd_config.d/40-consolepi.conf" &&
     ok "OpenSSH Match LocalPort" ||
     bad "OpenSSH Match LocalPort missing"
+
+! grep -q '^Match User consolepi$' "$ROOT/etc/ssh/sshd_config.d/40-consolepi.conf" &&
+    ! grep -q 'service.d/consolepi-generic-image.conf' "$ROOT/install.sh" &&
+    ! grep -q 'network-online.target' "$ROOT/etc/systemd/system/consolepi-generic-image-firstboot.service" &&
+    grep -q '39-consolepi-generic-image.conf' "$ROOT/usr/local/sbin/consolepi-prepare-generic-image" &&
+    grep -q 'Match User consolepi' "$ROOT/usr/local/sbin/consolepi-prepare-generic-image" &&
+    grep -q 'validate_authorized_key' "$ROOT/usr/local/sbin/consolepi-generic-image-firstboot" &&
+    grep -q 'passwd -l consolepi' "$ROOT/usr/local/sbin/consolepi-prepare-generic-image" &&
+    grep -q 'rm -f /etc/ssh/ssh_host_' "$ROOT/usr/local/sbin/consolepi-prepare-generic-image" &&
+    grep -q 'pam_radius_auth.conf' "$ROOT/usr/local/sbin/consolepi-prepare-generic-image" &&
+    grep -q '/var/lib/snmp/snmpd.conf' "$ROOT/usr/local/sbin/consolepi-prepare-generic-image" &&
+    grep -q '/etc/apt/apt.conf.d/90consolepi-proxy' "$ROOT/usr/local/sbin/consolepi-prepare-generic-image" &&
+    grep -q '/var/backups/consolepi' "$ROOT/usr/local/sbin/consolepi-prepare-generic-image" &&
+    grep -q 'systemd-analyze verify' "$ROOT/usr/local/sbin/consolepi-prepare-generic-image" &&
+    grep -q 'validate_authorized_key' "$ROOT/usr/local/sbin/consolepi-generic-image-firstboot" &&
+    grep -q '.consolepi-firstboot-token' "$ROOT/usr/local/sbin/consolepi-generic-image-firstboot" &&
+    grep -q 'ownership-verify' "$ROOT/usr/local/sbin/consolepi-maintenance" &&
+    ! grep -q 'session\["setup_ownership_token"\]' "$ROOT/opt/consolepi-web/app.py" &&
+    grep -q 'value="keep" checked' "$ROOT/opt/consolepi-web/templates/setup.html" &&
+    grep -q 'NEZAPÍNEJTE.*Set username and password' "$ROOT/docs/INSTALACE-IMAGE-RPI-IMAGER.txt" &&
+    ! grep -q 'Use password authentication' "$ROOT/docs/INSTALACE-IMAGE-RPI-IMAGER.txt" &&
+    ok "generic image key-only first boot" ||
+    bad "generic image first-boot safeguards missing"
 
 grep -q 'elements = { MANAGEMENT_CIDR }' "$ROOT/etc/nftables.conf" &&
     ok "nftables management placeholder" ||
