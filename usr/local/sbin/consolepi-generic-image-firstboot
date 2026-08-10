@@ -37,7 +37,7 @@ case "$state" in
     pending|claim_pending|key_generation_pending|complete) ;;
     *) fail 'generic-image stav chybí nebo je poškozený' ;;
 esac
-if [ "$state" = pending ]; then
+if [ "$state" = pending ] && [ ! -e "$IMAGER_SUCCESS" ]; then
     /usr/local/libexec/consolepi-imager-postvalidate ||
         fail 'výsledek Raspberry Pi Imager customizace byl odmítnut'
 fi

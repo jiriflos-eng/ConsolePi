@@ -247,6 +247,28 @@ def test_active_state_and_markers(root):
     source = (ROOT / "usr/local/sbin/consolepi-generic-image-firstboot").read_text()
     assert source.index("validate_generic_access") < source.index("case \"$state\" in claim_pending")
 
+    # A completed Imager post-validation must be restart-safe.  If firstboot
+    # fails later, an existing valid success marker must not cause
+    # postvalidate to be executed as a new Imager transaction.
+    assert 'if [ "$state" = pending ] && [ ! -e "$IMAGER_SUCCESS" ]; then' in source
+
+    # Generic firstboot runs before ssh.service.  Authentication-file sync
+    # must validate sshd configuration but reload ssh only when the systemd
+    # service is already active.
+    control = (ROOT / "usr/local/sbin/consolepi-control").read_text()
+    auth_start = control.index("def apply_authentication_files")
+    auth_end = control.index("\ndef auth_status", auth_start)
+    auth_block = control[auth_start:auth_end]
+    assert 'run("sshd", "-t")' in auth_block
+    assert 'run("systemctl", "is-active", "ssh", check=False)' in auth_block
+    assert 'if ssh_active:' in auth_block
+    assert auth_block.index('run("sshd", "-t")') < auth_block.index(
+        'run("systemctl", "is-active", "ssh", check=False)'
+    )
+    assert auth_block.index('if ssh_active:') < auth_block.index(
+        'run("systemctl", "reload", "ssh")'
+    )
+
 
 def test_standard_isolation():
     installer = (ROOT / "install.sh").read_text()

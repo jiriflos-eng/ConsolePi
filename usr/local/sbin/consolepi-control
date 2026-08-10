@@ -1047,11 +1047,21 @@ def apply_authentication_files(mode, retries):
         atomic_write(SSH_DROPIN, render_ssh_dropin(mode), 0o644)
         atomic_write(PAM_SSHD, render_pam_sshd(retries, mode), 0o644)
         run("sshd", "-t")
-        run("systemctl", "reload", "ssh")
+        ssh_active = (
+            run("systemctl", "is-active", "ssh", check=False).stdout.strip()
+            == "active"
+        )
+        if ssh_active:
+            run("systemctl", "reload", "ssh")
     except Exception:
         atomic_write(SSH_DROPIN, old_ssh, 0o644)
         atomic_write(PAM_SSHD, old_pam, 0o644)
-        run("systemctl", "reload", "ssh", check=False)
+        ssh_active = (
+            run("systemctl", "is-active", "ssh", check=False).stdout.strip()
+            == "active"
+        )
+        if ssh_active:
+            run("systemctl", "reload", "ssh", check=False)
         raise
 
 
