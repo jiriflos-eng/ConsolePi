@@ -22,6 +22,7 @@ for file in \
     "$ROOT/usr/local/sbin/consolepi-login-status" \
     "$ROOT/usr/local/sbin/consolepi-admin-menu" \
     "$ROOT/usr/local/sbin/consolepi-generic-image-firstboot" \
+    "$ROOT/usr/local/sbin/consolepi-generic-recovery" \
     "$ROOT/usr/local/sbin/consolepi-prepare-generic-image" \
     "$ROOT/usr/local/libexec/consolepi-imager-custom-guard" \
     "$ROOT/usr/local/libexec/consolepi-imager-userconf-guard" \
@@ -59,7 +60,8 @@ python3 -c 'import ast, pathlib; [ast.parse(pathlib.Path(p).read_text()) for p i
 python3 -c 'import ast, pathlib; [ast.parse(pathlib.Path(p).read_text()) for p in (
     "'"$ROOT"'/usr/local/libexec/consolepi-imager-guard",
     "'"$ROOT"'/usr/local/libexec/consolepi-imager-postvalidate",
-    "'"$ROOT"'/usr/local/lib/consolepi_imager_security.py"
+    "'"$ROOT"'/usr/local/lib/consolepi_imager_security.py",
+    "'"$ROOT"'/usr/local/lib/consolepi_generic_recovery.py"
 )]' && ok "strict Imager guard Python syntax" || bad "strict Imager guard Python syntax"
 
 python3 "$ROOT/tests/generic_behavior.py" || bad "generic image behavioral security tests"
@@ -152,6 +154,8 @@ grep -q '^Match User console LocalPort 2201$' "$ROOT/etc/ssh/sshd_config.d/40-co
     grep -q 'generic_pending' "$ROOT/usr/local/lib/consolepi_imager_security.py" &&
     grep -q 'validate_userconf_request' "$ROOT/usr/local/libexec/consolepi-imager-guard" &&
     grep -q 'consolepi-imager-postvalidate' "$ROOT/usr/local/sbin/consolepi-generic-image-firstboot" &&
+    grep -q 'consolepi-generic-recovery.service' "$ROOT/usr/local/sbin/consolepi-prepare-generic-image" &&
+    ! grep -q 'systemctl enable consolepi-generic-recovery' "$ROOT/install.sh" &&
     grep -q 'generic-imager-customization-failed' "$ROOT/usr/local/sbin/consolepi-generic-image-firstboot" &&
     ! grep -Eq 'consolepi-imager-(firstrun|import)' "$ROOT/install.sh" &&
     grep -q 'NEZAPÍNEJTE.*Set username and password' "$ROOT/docs/INSTALACE-IMAGE-RPI-IMAGER.txt" &&

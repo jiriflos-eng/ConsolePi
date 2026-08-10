@@ -40,6 +40,10 @@ id console >/dev/null 2>&1 || fail 'chybí účet console'
 getent group consolepi-web >/dev/null 2>&1 || fail 'chybí skupina consolepi-web'
 [ -x /usr/local/sbin/consolepi-generic-image-firstboot ] || fail 'chybí first-boot program'
 [ -f /etc/systemd/system/consolepi-generic-image-firstboot.service ] || fail 'chybí first-boot unit'
+[ -x /usr/local/sbin/consolepi-generic-recovery ] || fail 'chybí physical-console recovery program'
+[ -f /usr/local/lib/consolepi_generic_recovery.py ] || fail 'chybí physical-console recovery modul'
+[ -f /etc/systemd/system/consolepi-generic-recovery.service ] || fail 'chybí physical-console recovery unit'
+[ -x /bin/bash ] || fail 'chybí /bin/bash pro physical-console recovery'
 for program in "$IMAGER_GUARD" "$IMAGER_CUSTOM_GUARD" "$IMAGER_USER_GUARD" "$IMAGER_POSTVALIDATE"; do
     [ -x "$program" ] || fail "chybí generic Imager guard $program"
     [ -f "$program" ] && [ ! -L "$program" ] || fail "Imager guard není bezpečný soubor: $program"
@@ -62,7 +66,7 @@ done
 [ -f /usr/local/lib/consolepi_imager_security.py ] || fail 'chybí Imager security modul'
 [ -w /etc ] && [ -w "$STATE_DIR" ] && [ -w /home/consolepi ] || fail 'potřebné filesystémy nejsou zapisovatelné'
 [ "$(df -Pk "$STATE_DIR" | awk 'NR==2 {print $4}')" -ge 10240 ] || fail 'je potřeba alespoň 10 MiB volného místa'
-for command in awk cat cp df find findmnt getent grep hostnamectl install journalctl ln mktemp mount mv openssl passwd python3 readlink sshd ssh-keygen stat systemctl systemd-analyze truncate; do
+for command in awk cat cp df find findmnt getent grep hostnamectl install journalctl ln mktemp mount mv openssl passwd python3 readlink sshd ssh-keygen stat systemctl systemd-analyze truncate tty; do
     command -v "$command" >/dev/null 2>&1 || fail "chybí utilita $command"
 done
 
@@ -190,6 +194,7 @@ for service in ssh nginx consolepi-web; do
     cat "$prep_dir/dependency.conf" >>"$prep_dir/$service.service"
 done
 systemd-analyze verify /etc/systemd/system/consolepi-generic-image-firstboot.service \
+    /etc/systemd/system/consolepi-generic-recovery.service \
     "$prep_dir/ssh.service" "$prep_dir/nginx.service" "$prep_dir/consolepi-web.service" >/dev/null ||
     fail 'kandidátní generic systemd konfigurace není platná'
 
@@ -219,7 +224,7 @@ passwd -d console >/dev/null 2>&1 || true
 passwd -l console >/dev/null 2>&1 || true
 rm -f "$STATE_DIR/generic-imager-customization-failed" "$STATE_DIR/generic-imager-customization-imported" \
     "$STATE_DIR/.generic-imager-ssh-operation" "$STATE_DIR/.generic-imager-user-operation" \
-    "$STATE_DIR/generic-imager-audit.jsonl"
+    "$STATE_DIR/generic-imager-audit.jsonl" "$STATE_DIR/generic-recovery-active"
 
 # No pre-existing login key may survive in a generic image.
 find /root /home -xdev -type f -path '*/.ssh/*' -delete 2>/dev/null || true
@@ -301,7 +306,7 @@ for service in ssh nginx consolepi-web; do
 done
 
 systemctl daemon-reload
-systemctl enable consolepi-generic-image-firstboot.service ssh nginx \
+systemctl enable consolepi-generic-image-firstboot.service consolepi-generic-recovery.service ssh nginx \
     consolepi-web consolepi-port-monitor consolepi-update-check.timer >/dev/null
 
 printf '%s\n' 'Master je sanitizován. Vypněte jej bez dalšího síťového startu:'

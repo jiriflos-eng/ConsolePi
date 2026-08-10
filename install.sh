@@ -151,9 +151,11 @@ for target in \
     /usr/local/sbin/consolepi-transcript-writer \
     /usr/local/sbin/consolepi-update-check \
     /usr/local/sbin/consolepi-generic-image-firstboot \
+    /usr/local/sbin/consolepi-generic-recovery \
     /usr/local/sbin/consolepi-prepare-generic-image \
     /usr/local/lib/consolepi_firstboot_security.py \
     /usr/local/lib/consolepi_imager_security.py \
+    /usr/local/lib/consolepi_generic_recovery.py \
     /usr/local/libexec/consolepi-imager-guard \
     /usr/local/libexec/consolepi-imager-custom-guard \
     /usr/local/libexec/consolepi-imager-userconf-guard \
@@ -169,6 +171,7 @@ for target in \
     /etc/systemd/system/consolepi-update-check.timer \
     /etc/systemd/system/consolepi-system-upgrade.service \
     /etc/systemd/system/consolepi-generic-image-firstboot.service \
+    /etc/systemd/system/consolepi-generic-recovery.service \
     /etc/nginx/sites-available/consolepi \
     /etc/sudoers.d/consolepi-web \
     /etc/pam.d/sshd
@@ -252,9 +255,11 @@ install -m 0755 "$ROOT/usr/local/sbin/consolepi-log-maintain" /usr/local/sbin/co
 install -m 0755 "$ROOT/usr/local/sbin/consolepi-transcript-writer" /usr/local/sbin/consolepi-transcript-writer
 install -m 0755 "$ROOT/usr/local/sbin/consolepi-update-check" /usr/local/sbin/consolepi-update-check
 install -m 0755 "$ROOT/usr/local/sbin/consolepi-generic-image-firstboot" /usr/local/sbin/consolepi-generic-image-firstboot
+install -m 0755 "$ROOT/usr/local/sbin/consolepi-generic-recovery" /usr/local/sbin/consolepi-generic-recovery
 install -m 0755 "$ROOT/usr/local/sbin/consolepi-prepare-generic-image" /usr/local/sbin/consolepi-prepare-generic-image
 install -m 0644 "$ROOT/usr/local/lib/consolepi_firstboot_security.py" /usr/local/lib/consolepi_firstboot_security.py
 install -m 0644 "$ROOT/usr/local/lib/consolepi_imager_security.py" /usr/local/lib/consolepi_imager_security.py
+install -m 0644 "$ROOT/usr/local/lib/consolepi_generic_recovery.py" /usr/local/lib/consolepi_generic_recovery.py
 install -m 0755 "$ROOT/usr/local/libexec/consolepi-imager-guard" /usr/local/libexec/consolepi-imager-guard
 install -m 0755 "$ROOT/usr/local/libexec/consolepi-imager-custom-guard" /usr/local/libexec/consolepi-imager-custom-guard
 install -m 0755 "$ROOT/usr/local/libexec/consolepi-imager-userconf-guard" /usr/local/libexec/consolepi-imager-userconf-guard
@@ -275,6 +280,7 @@ install -m 0644 "$ROOT/etc/systemd/system/consolepi-update-check.service" /etc/s
 install -m 0644 "$ROOT/etc/systemd/system/consolepi-update-check.timer" /etc/systemd/system/consolepi-update-check.timer
 install -m 0644 "$ROOT/etc/systemd/system/consolepi-system-upgrade.service" /etc/systemd/system/consolepi-system-upgrade.service
 install -m 0644 "$ROOT/etc/systemd/system/consolepi-generic-image-firstboot.service" /etc/systemd/system/consolepi-generic-image-firstboot.service
+install -m 0644 "$ROOT/etc/systemd/system/consolepi-generic-recovery.service" /etc/systemd/system/consolepi-generic-recovery.service
 install -m 0644 "$ROOT/etc/nginx/sites-available/consolepi" /etc/nginx/sites-available/consolepi
 install -m 0440 "$ROOT/etc/sudoers.d/consolepi-web" /etc/sudoers.d/consolepi-web
 if [ "$UPDATE_MODE" = yes ]; then

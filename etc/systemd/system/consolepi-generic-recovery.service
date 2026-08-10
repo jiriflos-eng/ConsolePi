@@ -1,0 +1,19 @@
+[Unit]
+Description=ConsolePi one-shot physical generic-image recovery shell
+RequiresMountsFor=/boot/firmware
+After=local-fs.target
+Before=getty@tty1.service consolepi-generic-image-firstboot.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/consolepi-generic-recovery
+StandardInput=tty-force
+StandardOutput=tty
+StandardError=tty
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+TTYVTDisallocate=no
+
+[Install]
+WantedBy=multi-user.target

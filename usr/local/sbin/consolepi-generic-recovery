@@ -1,0 +1,37 @@
+#!/bin/sh
+# One-shot physical tty1 recovery for a fail-closed generic image.
+set -eu
+
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+export PATH
+umask 077
+
+[ "$(id -u)" -eq 0 ] || exit 1
+[ "$(tty 2>/dev/null)" = /dev/tty1 ] || exit 1
+
+set +e
+python3 - <<'PY'
+import sys
+sys.path.insert(0, "/usr/local/lib")
+from consolepi_generic_recovery import activate_recovery
+active = activate_recovery(
+    "/etc/consolepi/generic-image.json",
+    "/etc/consolepi/generic-imager-customization-failed",
+    "/boot/firmware/consolepi-recovery-enable",
+    "/etc/consolepi/generic-recovery-active",
+)
+raise SystemExit(0 if active else 10)
+PY
+status=$?
+set -e
+case "$status" in
+    0) ;;
+    10) exit 0 ;;
+    *) exit "$status" ;;
+esac
+
+printf '\n%s\n%s\n\n' \
+    'ConsolePi GENERIC IMAGE RECOVERY' \
+    'Provisioning remains FAIL-CLOSED.'
+export PS1='consolepi-recovery# '
+exec /bin/bash --noprofile --norc -i

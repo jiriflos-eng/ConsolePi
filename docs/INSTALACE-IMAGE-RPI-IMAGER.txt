@@ -185,6 +185,12 @@ Stav `generic-imager-customization-failed` se restartem nemaže. Takovou kartu
 nepřipojujte do sítě; z lokální konzole ověřte příčinu a připravte ji znovu
 od čistého, úspěšně sanitizovaného masteru se správnou key-only customizací.
 
+Pro vývojovou diagnostiku bez sítě lze na vypnuté kartě vytvořit prázdný soubor
+`consolepi-recovery-enable` v kořeni firmware FAT partition. Při pending nebo
+failed generic stavu se marker při příštím bootu jednorázově spotřebuje a pouze
+na fyzickém tty1 se otevře diagnostický root shell. Provisioning zůstává
+fail-closed; po `exit` ani při dalším bootu bez nového markeru se shell neobnoví.
+
 Pokud se first boot přeruší před ověřením tokenu, spusťte zařízení znovu;
 služba bezpečně pokračuje podle uloženého stavu. Vypršel-li token nebo je-li
 `generic-image.json` chybějící či poškozený, provisioning zůstane zablokovaný.

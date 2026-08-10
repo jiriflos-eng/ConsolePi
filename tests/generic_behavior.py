@@ -3,6 +3,7 @@ import importlib
 import json
 import os
 import pathlib
+import stat
 import subprocess
 import sys
 import tempfile
@@ -11,10 +12,12 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "usr/local/lib"))
 import consolepi_firstboot_security as security
 import consolepi_imager_security as imager_security
+import consolepi_generic_recovery as recovery_security
 def expect_failure(function, *args, **kwargs):
     try:
         function(*args, **kwargs)
-    except (security.ClaimError, imager_security.ImagerImportError, FileNotFoundError):
+    except (security.ClaimError, imager_security.ImagerImportError,
+            recovery_security.RecoveryError, FileNotFoundError):
         return
     raise AssertionError(f"Expected failure: {function.__name__}")
 
@@ -256,6 +259,65 @@ def test_standard_isolation():
     assert "service.d/consolepi-generic-image.conf" not in installer
     assert "imager-systemd-compat" not in installer
     assert "generic-imager-audit.jsonl" not in installer
+    assert "systemctl enable consolepi-generic-recovery" not in installer
+
+
+def test_physical_recovery(root):
+    uid, gid = os.getuid(), os.getgid()
+    generic = root / "generic-image.json"
+    failure = root / "failure"
+    boot = root / "boot"; boot.mkdir()
+    marker = boot / "consolepi-recovery-enable"
+    active = root / "generic-recovery-active"
+    success = root / "success"
+    audit = root / "audit"
+    operation = root / "operation"
+    authorized = root / "authorized_keys"
+    generic.write_text('{"state":"pending"}\n'); os.chmod(generic, 0o600)
+
+    assert not recovery_security.activate_recovery(generic, failure, marker, active, uid, gid)
+    marker.write_bytes(b""); os.chmod(marker, 0o644)
+    audit.write_bytes(b'{"seq":1}\n')
+    operation.write_bytes(b"operation-marker\n")
+    authorized.write_bytes(b"ssh-ed25519 test-placeholder\n")
+    audit_before, operation_before, authorized_before = (
+        audit.read_bytes(), operation.read_bytes(), authorized.read_bytes())
+    assert recovery_security.activate_recovery(generic, failure, marker, active, uid, gid)
+    assert not marker.exists() and not success.exists()
+    assert not failure.exists() and audit.read_bytes() == audit_before
+    assert operation.read_bytes() == operation_before and authorized.read_bytes() == authorized_before
+    info = active.lstat()
+    assert info.st_uid == uid and info.st_gid == gid and stat.S_IMODE(info.st_mode) == 0o600
+    assert not recovery_security.activate_recovery(generic, failure, marker, active, uid, gid)
+
+    # A failure object independently permits recovery even without pending state.
+    generic.write_text('{"state":"complete"}\n'); os.chmod(generic, 0o600)
+    failure.write_bytes(b"original failure\n")
+    failure_before, audit_before = failure.read_bytes(), audit.read_bytes()
+    marker.write_bytes(b""); os.chmod(marker, 0o644)
+    assert recovery_security.activate_recovery(generic, failure, marker, active, uid, gid)
+    assert failure.read_bytes() == failure_before and audit.read_bytes() == audit_before
+
+    for kind in ("content", "symlink", "fifo", "directory"):
+        marker.unlink(missing_ok=True)
+        if kind == "content": marker.write_text("not-empty\n"); os.chmod(marker, 0o644)
+        elif kind == "symlink": marker.symlink_to(boot / "missing")
+        elif kind == "fifo": os.mkfifo(marker)
+        else: marker.mkdir()
+        expect_failure(recovery_security.activate_recovery, generic, failure, marker, active, uid, gid)
+        if marker.is_dir() and not marker.is_symlink(): marker.rmdir()
+        else: marker.unlink(missing_ok=True)
+
+    script = (ROOT / "usr/local/sbin/consolepi-generic-recovery").read_text()
+    unit = (ROOT / "etc/systemd/system/consolepi-generic-recovery.service").read_text()
+    sanitizer = (ROOT / "usr/local/sbin/consolepi-prepare-generic-image").read_text()
+    assert '$(tty 2>/dev/null)" = /dev/tty1' in script
+    assert "ConsolePi GENERIC IMAGE RECOVERY" in script
+    assert "Provisioning remains FAIL-CLOSED." in script
+    assert "Restart=" not in unit and "Before=getty@tty1.service" in unit
+    assert "ssh.service" not in unit and "nginx.service" not in unit and "network-online.target" not in unit
+    assert '"$STATE_DIR/generic-recovery-active"' in sanitizer
+    assert "consolepi-recovery-enable" not in sanitizer
 
 
 def test_machine_id_sanitization(root):
@@ -435,6 +497,7 @@ def main():
         invariant_root = root / "invariants"; invariant_root.mkdir(); test_active_state_and_markers(invariant_root)
         machine_id_root = root / "machine-id"; machine_id_root.mkdir(); test_machine_id_sanitization(machine_id_root)
         cmdline_root = root / "cmdline"; cmdline_root.mkdir(); test_legacy_cmdline_placeholder(cmdline_root)
+        recovery_root = root / "recovery"; recovery_root.mkdir(); test_physical_recovery(recovery_root)
     test_accounts()
     test_standard_isolation()
     print("OK: generic image behavioral security tests")
