@@ -324,8 +324,15 @@ def guard_operation_label(mode, arguments):
 
 
 def validate_userconf_request(arguments):
-    if list(arguments) != ["consolepi", ""]:
-        raise ImagerImportError("generic image rejects username or password customization")
+    arguments = list(arguments)
+    if len(arguments) != 2 or arguments[0] != "consolepi":
+        raise ImagerImportError("generic image permits userconf only for consolepi")
+    password_field = arguments[1]
+    if len(password_field) > 1024 or any(ord(ch) < 32 or ord(ch) == 127 for ch in password_field):
+        raise ImagerImportError("generic image rejects unsafe userconf password field")
+    # Raspberry Pi Imager requires a username/password customization entry.
+    # The supplied password/hash is intentionally ignored. The consolepi
+    # account must remain locked and is revalidated by the guard.
     return True
 
 
@@ -334,6 +341,40 @@ def validate_ssh_request(arguments):
     if len(arguments) != 3 or arguments[:2] != ["enable_ssh", "-k"]:
         raise ImagerImportError("generic image permits only enable_ssh -k")
     return validate_ed25519_key(arguments[2])
+
+
+def validate_safe_imager_noop(arguments):
+    arguments = list(arguments)
+    if len(arguments) != 2:
+        raise ImagerImportError("generic image rejects malformed Imager customization")
+
+    operation, value = arguments
+    if not value or len(value) > 253:
+        raise ImagerImportError("generic image rejects malformed Imager customization value")
+    if any(ord(ch) < 32 or ord(ch) == 127 for ch in value):
+        raise ImagerImportError("generic image rejects control characters in Imager customization")
+
+    if operation == "set_hostname":
+        labels = value.rstrip(".").split(".")
+        if not labels or any(
+            not label or len(label) > 63 or
+            not re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?", label)
+            for label in labels
+        ):
+            raise ImagerImportError("generic image rejects invalid hostname")
+        return True
+
+    if operation == "set_keymap":
+        if len(value) > 64 or not re.fullmatch(r"[A-Za-z0-9._+/-]+", value):
+            raise ImagerImportError("generic image rejects invalid keymap")
+        return True
+
+    if operation == "set_timezone":
+        if len(value) > 128 or not re.fullmatch(r"[A-Za-z0-9._+/-]+", value):
+            raise ImagerImportError("generic image rejects invalid timezone")
+        return True
+
+    raise ImagerImportError("generic image rejects unsupported Imager customization")
 
 
 def require_no_host_keys(directory="/etc/ssh"):

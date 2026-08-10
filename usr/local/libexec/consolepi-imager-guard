@@ -11,7 +11,8 @@ from consolepi_imager_security import (
     append_guard_audit,
     ImagerImportError, generic_guard_active, generic_pending, guard_operation_label,
     install_authorized_key, mark_failure_once,
-    record_operation, validate_ssh_request, validate_userconf_request,
+    record_operation, validate_safe_imager_noop, validate_ssh_request,
+    validate_userconf_request,
 )
 
 VENDORS = {
@@ -53,9 +54,14 @@ def main():
             locked_account()
             append_guard_audit(guard_name, operation, len(arguments), "accepted")
             return
-        key = validate_ssh_request(arguments)
-        install_authorized_key(account.pw_dir, account.pw_uid, account.pw_gid, key)
-        record_operation(SSH_OPERATION, (key + "\n").encode())
+        if operation == "enable_ssh":
+            key = validate_ssh_request(arguments)
+            install_authorized_key(account.pw_dir, account.pw_uid, account.pw_gid, key)
+            record_operation(SSH_OPERATION, (key + "\n").encode())
+        elif operation in {"set_hostname", "set_keymap", "set_timezone"}:
+            validate_safe_imager_noop(arguments)
+        else:
+            raise ImagerImportError("generic image rejects unsupported Imager customization")
         locked_account()
         append_guard_audit(guard_name, operation, len(arguments), "accepted")
     except Exception as exc:

@@ -392,9 +392,41 @@ def test_imager_key_and_firstrun(root):
     assert active.read_text() == "vendor\n" and not vendor.exists()
     assert 'ln -s "$boot_relative/cmdline.txt" /boot/cmdline.txt' in sanitizer
 
-    for arguments in (["consolepi", "$6$passwordhash"], ["pi", ""],
-                      ["consolepi"], ["consolepi", "", "extra"]):
+    # Raspberry Pi Imager requires a username/password customization entry.
+    # The password/hash is accepted syntactically but is never applied by the
+    # generic guard; consolepi must remain locked.
+    assert imager_security.validate_userconf_request(
+        ["consolepi", "$6$dummy-password-hash"]
+    )
+    assert imager_security.validate_userconf_request(
+        ["consolepi", "temporary-imager-password"]
+    )
+
+    for arguments in (["pi", ""], ["consolepi"],
+                      ["consolepi", "", "extra"],
+                      ["consolepi", "bad\nvalue"]):
         expect_failure(imager_security.validate_userconf_request, arguments)
+
+    assert imager_security.validate_safe_imager_noop(
+        ["set_hostname", "consolepi"]
+    )
+    assert imager_security.validate_safe_imager_noop(
+        ["set_keymap", "cz"]
+    )
+    assert imager_security.validate_safe_imager_noop(
+        ["set_timezone", "Europe/Prague"]
+    )
+
+    for arguments in (
+        ["set_wlan", "ssid"],
+        ["set_hostname", ""],
+        ["set_hostname", "-invalid"],
+        ["set_keymap", "bad value"],
+        ["set_timezone", "../bad timezone"],
+        ["unknown", "value"],
+    ):
+        expect_failure(imager_security.validate_safe_imager_noop, arguments)
+
     rejected = (["set_wlan", "ssid", "psk", "CZ"], ["set_hostname", "evil"],
                 ["enable_ssh"], ["enable_ssh", "-p", key],
                 ["enable_ssh", "-k", key, "extra"])
