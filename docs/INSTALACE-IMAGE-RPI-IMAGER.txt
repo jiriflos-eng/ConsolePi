@@ -52,35 +52,23 @@ KROK 2 – PRVNÍ START
 4. Z DHCP serveru, routeru nebo síťového skeneru zjistěte IPv4 adresu RPi.
 
 KROK 3 – DOKONČENÍ VE WEBU
----------------------------
-1. Nejdříve prokažte držení privátního klíče. Přihlaste se přes SSH a načtěte
-   jednorázový token vytvořený až na tomto zařízení:
 
-   macOS / Linux:
-       ssh -i "$HOME/.ssh/consolepi-admin" consolepi@IP_ADRESA_RPI "cat ~/.consolepi-firstboot-token"
-
-   Windows PowerShell:
-       ssh -i "$env:USERPROFILE\.ssh\consolepi-admin" consolepi@IP_ADRESA_RPI "cat ~/.consolepi-firstboot-token"
-
-2. V prohlížeči otevřete:
+1. V prohlížeči otevřete:
 
    https://IP_ADRESA_RPI/
 
-3. Prohlížeč upozorní na vlastní HTTPS certifikát. To je při prvním spuštění
+2. Prohlížeč upozorní na vlastní HTTPS certifikát. To je při prvním spuštění
    očekávané; pokračujte na stránku zařízení.
-4. Vložte jednorázový token. Bez něj se konfigurační formulář nezobrazí.
-   Token není v distribuované image a lze jej přečíst jen po SSH autentizaci
-   privátním klíčem odpovídajícím klíči z Imageru. Platí 10 minut a první
-   úspěšné ověření jej nevratně spotřebuje; průvodce pak používá novou
-   serverovou provisioning session s vlastní desetiminutovou expirací.
-5. Dokončete průvodce:
-   - nastavte heslo webové administrace,
-   - vyplňte název, hostname a umístění zařízení,
-   - výchozí volbou „Ponechat stávající klíč“ zachovejte klíč z Imageru;
-     případné nahrazení je dostupné až po ověření jednorázovým tokenem,
-   - případně potvrďte rozšíření datového oddílu na celou kapacitu SD karty.
-6. Po dokončení se token smaže a otevře se veřejný přehled ConsolePi. Tlačítkem „Admin“ se
-   přihlásíte do administrace heslem zvoleným v průvodci.
+
+3. Zobrazí se průvodce prvním spuštěním. Nastavte heslo webové administrace,
+   identitu zařízení a zkontrolujte administrativní SSH přístup.
+
+4. U generic image se při prvním spuštění zachovává SSH veřejný klíč vložený
+   Raspberry Pi Imagerem. Tento klíč je považován za ověřený už při bezpečném
+   importu z Raspberry Pi Imageru.
+
+5. Dokončete průvodce. Po úspěšném dokončení se generic-image stav změní na
+   `complete` a webová administrace přejde do běžného provozního režimu.
 
 KROK 4 – SSH PO PRVNÍM SPUŠTĚNÍ
 -------------------------------
@@ -172,7 +160,7 @@ ConsolePi potom přijme právě jeden validní veřejný klíč ssh-ed25519 z ú
 consolepi, zkopíruje jej technickému účtu console a vytvoří nové hostitelské
 SSH klíče, TLS klíč a webové tajemství. Pokud klíč chybí, je neplatný nebo má
 nebezpečná oprávnění, SSH i web zůstanou zastavené. Po úspěchu vznikne
-jednorázový token čitelný pouze účtem consolepi přes ověřené SSH spojení.
+SSH veřejný klíč vložený Raspberry Pi Imagerem je použit jako počáteční administrativní přístup.
 V OS Customisation smí být zapnuto pouze SSH s public-key authentication a
 právě jedním Ed25519 klíčem. Username/password, hostname, Wi-Fi, locale,
 timezone, keyboard, Raspberry Pi Connect a všechny další volby jsou
@@ -191,18 +179,18 @@ failed generic stavu se marker při příštím bootu jednorázově spotřebuje 
 na fyzickém tty1 se otevře diagnostický root shell. Provisioning zůstává
 fail-closed; po `exit` ani při dalším bootu bez nového markeru se shell neobnoví.
 
-Pokud se first boot přeruší před ověřením tokenu, spusťte zařízení znovu;
-služba bezpečně pokračuje podle uloženého stavu. Vypršel-li token nebo je-li
-`generic-image.json` chybějící či poškozený, provisioning zůstane zablokovaný.
-Vypršel-li dosud nepoužitý token, lze jej z fyzické lokální konzole bezpečně
-rotovat příkazem `sudo consolepi-maintenance firstboot token-reset`; novou
-hodnotu potom načtěte obvyklým SSH příkazem. Při poškozeném stavu ověřte
-disk z lokální konzole a po odstranění neúplných runtime credentials zopakujte
-přípravu generic image; nevytvářejte ručně náhradní token. Selže-li
-regenerace SSH nebo TLS identity, ponechte zařízení mimo síť, opravte příčinu
-(typicky plný/read-only filesystem nebo chybnou konfiguraci) a spusťte
+Pokud se first boot přeruší před dokončením webového průvodce, spusťte
+zařízení znovu; služba bezpečně pokračuje podle uloženého stavu. Je-li
+`generic-image.json` chybějící nebo poškozený, provisioning zůstane
+fail-closed. Stav ověřte z fyzické lokální konzole a při poškozeném nebo
+neúplném generic stavu připravte image znovu z čistého, úspěšně
+sanitizovaného masteru.
+
+Selže-li regenerace SSH nebo TLS identity, ponechte zařízení mimo síť, opravte
+příčinu (typicky plný/read-only filesystem nebo chybnou konfiguraci) a spusťte
 provisioning znovu z lokální konzole. Aktivní klíče se při neúspěšném
 nahrazení obnoví z lokální zálohy.
+
 
 OBNOVA PO SELHÁNÍ SANITIZACE
 ----------------------------

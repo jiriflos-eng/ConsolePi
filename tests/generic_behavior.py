@@ -1,5 +1,4 @@
 #!/usr/bin/python3
-import importlib
 import json
 import os
 import pathlib
@@ -37,28 +36,6 @@ def test_states(root):
     firstboot.write_text('{"state":"pending","reason":"factory_reset"}\n')
     assert not security.claim_required(firstboot, generic)
 
-
-def test_token(root):
-    token_path, metadata = root / "token", root / "claim.json"
-    sessions = root / "sessions"
-    token = security.create_token(token_path, metadata, now=100)
-    expect_failure(security.consume_token, "invalid", token_path, metadata, sessions, 101)
-    session_id = security.consume_token(token, token_path, metadata, sessions, now=101)
-    assert token != session_id and not token_path.exists()
-    assert security.validate_session(session_id, sessions, now=102)
-    expect_failure(security.consume_token, token, token_path, metadata, sessions, 102)
-    importlib.reload(security)
-    expect_failure(security.consume_token, token, token_path, metadata, sessions, 103)
-    security.consume_session(session_id, sessions)
-    expect_failure(security.validate_session, session_id, sessions, 104)
-    expired_token = security.create_token(token_path, metadata, now=200)
-    expect_failure(
-        security.consume_token, expired_token, token_path, metadata, sessions,
-        200 + security.TOKEN_TTL + 1,
-    )
-    app_source = (ROOT / "opt/consolepi-web/app.py").read_text()
-    assert 'session["setup_ownership_token"]' not in app_source
-    assert 'request.args' not in app_source[app_source.index("def setup():"):app_source.index("def setup_storage_expand")]
 
 
 def make_key(directory, kind="ed25519"):
@@ -129,13 +106,13 @@ def test_active_state_and_markers(root):
     keys.write_text(ed25519 + "\n"); os.chmod(keys, 0o600)
     passwd = f"consolepi:x:{uid}:{gid}::${{HOME}}:/bin/bash\n".replace("${HOME}", str(home))
     shadow = "consolepi:!:1::::::\n"
-    for state in ("pending", "claim_pending", "key_generation_pending", "complete"):
+    for state in ("pending", "claim_pending", "complete"):
         assert security.validate_generic_access(state, passwd, shadow, home, uid, gid) == ed25519
     expect_failure(security.validate_generic_access, "claim_pending", passwd, "consolepi:$6$hash:1::::::\n", home, uid, gid)
     keys.write_text(ed25519 + "\n" + ed25519 + "\n")
     expect_failure(security.validate_generic_access, "claim_pending", passwd, shadow, home, uid, gid)
     keys.write_text("invalid\n"); expect_failure(
-        security.validate_generic_access, "key_generation_pending", passwd, shadow, home, uid, gid)
+        security.validate_generic_access, "claim_pending", passwd, shadow, home, uid, gid)
     keys.write_text(ed25519 + "\n")
     changed_uid = passwd.replace(f":{uid}:{gid}:", f":{uid + 1}:{gid}:")
     expect_failure(security.validate_generic_access, "complete", changed_uid, shadow, home, uid, gid)
@@ -545,7 +522,6 @@ def main():
     with tempfile.TemporaryDirectory() as directory:
         root = pathlib.Path(directory)
         state_root = root / "states"; state_root.mkdir(); test_states(state_root)
-        token_root = root / "tokens"; token_root.mkdir(); test_token(token_root)
         key_root = root / "keys"; key_root.mkdir(); test_keys(key_root)
         imager_root = root / "imager"; imager_root.mkdir(); test_imager_key_and_firstrun(imager_root)
         invariant_root = root / "invariants"; invariant_root.mkdir(); test_active_state_and_markers(invariant_root)

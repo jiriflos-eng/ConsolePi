@@ -16,9 +16,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 sys.path.insert(0, "/usr/local/lib")
 from consolepi_firstboot_security import (
-    ClaimError, claim_required, consume_session, consume_token, create_token,
-    firstboot_reason, generic_state, validate_authorized_key, validate_session,
-    write_generic_state,
+    claim_required, firstboot_reason, generic_state, write_generic_state,
 )
 
 from cryptography import x509
@@ -29,9 +27,6 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 IDENTITY = Path("/etc/consolepi/identity.json")
 FIRSTBOOT = Path("/etc/consolepi/firstboot.json")
 GENERIC_IMAGE = Path("/etc/consolepi/generic-image.json")
-FIRSTBOOT_CLAIM_TOKEN = Path("/home/consolepi/.consolepi-firstboot-token")
-FIRSTBOOT_CLAIM_META = Path("/etc/consolepi/firstboot-claim.json")
-FIRSTBOOT_SESSIONS = Path("/var/lib/consolepi-web/firstboot-sessions")
 HOSTS = Path("/etc/hosts")
 TLS_DIR = Path("/etc/consolepi/tls")
 TLS_CERT = TLS_DIR / "consolepi.crt"
@@ -150,46 +145,6 @@ def firstboot_status():
         "admin_key_present": admin_key_present,
     }))
 
-
-def firstboot_ownership_verify():
-    if generic_state(FIRSTBOOT, GENERIC_IMAGE) != "claim_pending":
-        raise ValueError("Zařízení není připravené k ověření vlastníka.")
-    session_id = consume_token(
-        str(payload().get("token", "")), FIRSTBOOT_CLAIM_TOKEN,
-        FIRSTBOOT_CLAIM_META, FIRSTBOOT_SESSIONS,
-    )
-    run("logger", "-p", "authpriv.notice", "-t", "consolepi", "FIRSTBOOT_OWNERSHIP_VERIFIED")
-    print(json.dumps({"verified": True, "session_id": session_id}))
-
-
-def firstboot_token_reset():
-    """Rotate an expired, unconsumed claim token from a trusted local console."""
-    if os.geteuid() != 0 or generic_state(FIRSTBOOT, GENERIC_IMAGE) != "claim_pending":
-        raise ValueError("Token lze obnovit pouze lokálně jako root ve stavu claim_pending.")
-    administrator = pwd.getpwnam("consolepi")
-    validate_authorized_key(ADMIN_AUTHORIZED_KEYS, administrator.pw_uid)
-    create_token(FIRSTBOOT_CLAIM_TOKEN, FIRSTBOOT_CLAIM_META)
-    os.chown(FIRSTBOOT_CLAIM_TOKEN, administrator.pw_uid, administrator.pw_gid)
-    os.chmod(FIRSTBOOT_CLAIM_TOKEN, 0o400)
-    print(json.dumps({"reset": True}))
-
-
-def verify_provisioning_session(values, expected_states=("claim_pending",)):
-    state = generic_state(FIRSTBOOT, GENERIC_IMAGE)
-    if firstboot_reason(FIRSTBOOT) != "generic_image":
-        return "", "standard"
-    if state not in expected_states:
-        raise ValueError("Generic-image stav nepovoluje tuto operaci.")
-    session_id = str(values.get("provisioning_session", ""))
-    validate_session(session_id, FIRSTBOOT_SESSIONS)
-    return session_id, state
-
-
-def finish_generic_claim(session_id):
-    consume_session(session_id, FIRSTBOOT_SESSIONS)
-    FIRSTBOOT_CLAIM_TOKEN.unlink(missing_ok=True)
-    FIRSTBOOT_CLAIM_META.unlink(missing_ok=True)
-    write_generic_state(GENERIC_IMAGE, "complete")
 
 
 def derive_key(passphrase, salt):
@@ -683,12 +638,11 @@ def install_admin_public_key(value):
 
 def firstboot_admin_key_install():
     values = payload()
-    session_id, state = verify_provisioning_session(
-        values, ("key_generation_pending",)
-    )
+    if firstboot_reason(FIRSTBOOT) == "generic_image":
+        raise ValueError(
+            "Generic image používá administrativní klíč vložený Raspberry Pi Imagerem."
+        )
     line = install_admin_public_key(values.get("public_key", ""))
-    if state != "standard":
-        finish_generic_claim(session_id)
     run(
         "logger", "-p", "authpriv.notice", "-t", "consolepi",
         "FIRSTBOOT_ADMIN_KEY_INSTALLED type=ed25519",
@@ -698,7 +652,12 @@ def firstboot_admin_key_install():
 
 def firstboot_configure():
     values = payload()
-    session_id, generic = verify_provisioning_session(values)
+    if firstboot_reason(FIRSTBOOT) == "generic_image":
+        generic = generic_state(FIRSTBOOT, GENERIC_IMAGE)
+        if generic != "claim_pending":
+            raise ValueError("Generic-image stav nepovoluje tuto operaci.")
+    else:
+        generic = "standard"
     password_hash = str(values.get("web_password_hash", "")).strip()
     if not password_hash.startswith(("scrypt:", "pbkdf2:")) or len(password_hash) > 1024:
         raise ValueError("Neplatné heslo webové administrace.")
@@ -743,10 +702,7 @@ def firstboot_configure():
         completed_state["reason"] = "generic_image"
     write_firstboot(completed_state)
     if generic != "standard":
-        if values.get("key_mode") == "generate":
-            write_generic_state(GENERIC_IMAGE, "key_generation_pending")
-        else:
-            finish_generic_claim(session_id)
+        write_generic_state(GENERIC_IMAGE, "complete")
     run(
         "logger", "-p", "authpriv.notice", "-t", "consolepi",
         f"FIRSTBOOT_COMPLETE hostname={socket.gethostname()}",
@@ -849,8 +805,6 @@ def main():
         ("audit", "status"): audit_status,
         ("clone", "rekey"): clone_rekey,
         ("firstboot", "status"): firstboot_status,
-        ("firstboot", "ownership-verify"): firstboot_ownership_verify,
-        ("firstboot", "token-reset"): firstboot_token_reset,
         ("firstboot", "configure"): firstboot_configure,
         ("firstboot", "admin-key-install"): firstboot_admin_key_install,
         ("storage", "status"): storage_status,

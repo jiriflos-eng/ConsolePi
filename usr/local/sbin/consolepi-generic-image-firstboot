@@ -13,8 +13,6 @@ ADMIN_USER=consolepi
 ADMIN_KEYS=/home/consolepi/.ssh/authorized_keys
 CONSOLE_KEYS=/home/console/.ssh/authorized_keys
 TLS_DIR=/etc/consolepi/tls
-CLAIM_TOKEN=/home/consolepi/.consolepi-firstboot-token
-CLAIM_METADATA=/etc/consolepi/firstboot-claim.json
 IMAGER_FAILURE=/etc/consolepi/generic-imager-customization-failed
 IMAGER_SUCCESS=/etc/consolepi/generic-imager-customization-imported
 
@@ -34,7 +32,7 @@ PY
 )
 case "$state" in
     standard) exit 0 ;;
-    pending|claim_pending|key_generation_pending|complete) ;;
+    pending|claim_pending|complete) ;;
     *) fail 'generic-image stav chybí nebo je poškozený' ;;
 esac
 if [ "$state" = pending ] && [ ! -e "$IMAGER_SUCCESS" ]; then
@@ -61,7 +59,7 @@ print(validate_generic_access(
 PY
 ) || fail 'účet consolepi, locked password nebo authorized_keys nesplňuje bezpečnostní invarianty'
 
-case "$state" in claim_pending|key_generation_pending|complete) unset key; exit 0 ;; esac
+case "$state" in claim_pending|complete) unset key; exit 0 ;; esac
 
 install -d -o console -g console -m 0700 /home/console/.ssh
 tmp_console_key=$(mktemp /home/console/.ssh/.authorized_keys.XXXXXX)
@@ -94,16 +92,6 @@ python3 -c 'import secrets; print(secrets.token_hex(32))' >/etc/consolepi/web.se
 chown root:consolepi-web /etc/consolepi/web.secret
 chmod 0640 /etc/consolepi/web.secret
 
-# This per-device claim token is created only after the Imager key is valid.
-# It is readable solely through an SSH login proving possession of that key.
-python3 - "$CLAIM_TOKEN" "$CLAIM_METADATA" <<'PY'
-import sys
-sys.path.insert(0, "/usr/local/lib")
-from consolepi_firstboot_security import create_token
-create_token(sys.argv[1], sys.argv[2])
-PY
-chown consolepi:consolepi "$CLAIM_TOKEN"
-chmod 0400 "$CLAIM_TOKEN"
 /usr/local/sbin/consolepi-control auth sync >/dev/null || fail 'nelze aktivovat klíčovou autentizaci konzolového účtu'
 
 # Rebuild the generic firewall from the Ethernet DHCP network instead of

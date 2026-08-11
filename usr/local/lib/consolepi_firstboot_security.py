@@ -1,19 +1,14 @@
 #!/usr/bin/python3
 """Fail-closed generic-image claim state and one-time credentials."""
-import fcntl
 import hashlib
-import hmac
 import json
 import os
 import secrets
 import stat
 import subprocess
-import time
 from pathlib import Path
 
-TOKEN_TTL = 600
-SESSION_TTL = 600
-KNOWN_GENERIC_STATES = {"pending", "claim_pending", "key_generation_pending", "complete"}
+KNOWN_GENERIC_STATES = {"pending", "claim_pending", "complete"}
 
 
 class ClaimError(ValueError):
@@ -82,79 +77,6 @@ def write_generic_state(path, state):
     atomic_write(path, json.dumps({"state": state}, separators=(",", ":")) + "\n")
 
 
-def create_token(token_path, metadata_path, now=None):
-    now = int(time.time() if now is None else now)
-    token = secrets.token_urlsafe(32)
-    atomic_write(token_path, token + "\n", 0o400)
-    metadata = {
-        "version": 1,
-        "digest": hashlib.sha256(token.encode()).hexdigest(),
-        "created_at": now,
-        "expires_at": now + TOKEN_TTL,
-        "used": False,
-    }
-    atomic_write(metadata_path, json.dumps(metadata, separators=(",", ":")) + "\n")
-    return token
-
-
-def session_path(session_dir, session_id):
-    digest = hashlib.sha256(session_id.encode()).hexdigest()
-    return Path(session_dir) / f"{digest}.json"
-
-
-def consume_token(token, token_path, metadata_path, session_dir, now=None):
-    now = int(time.time() if now is None else now)
-    metadata_path = Path(metadata_path)
-    lock_path = metadata_path.with_suffix(metadata_path.suffix + ".lock")
-    lock_path.parent.mkdir(parents=True, exist_ok=True)
-    with lock_path.open("a+b") as lock:
-        os.chmod(lock_path, 0o600)
-        fcntl.flock(lock, fcntl.LOCK_EX)
-        try:
-            metadata = read_json(metadata_path)
-        except (OSError, json.JSONDecodeError, ClaimError) as exc:
-            raise ClaimError("Autorizační token není dostupný.") from exc
-        required = {"digest", "created_at", "expires_at", "used", "version"}
-        if set(metadata) != required or metadata["version"] != 1:
-            raise ClaimError("Autorizační token má poškozený stav.")
-        if metadata["used"]:
-            raise ClaimError("Autorizační token už byl použit.")
-        if not isinstance(metadata["expires_at"], int) or now > metadata["expires_at"]:
-            raise ClaimError("Autorizační token vypršel.")
-        digest = hashlib.sha256(str(token).encode()).hexdigest()
-        if not hmac.compare_digest(metadata["digest"], digest):
-            raise ClaimError("Autorizační token není platný.")
-        metadata["used"] = True
-        metadata["used_at"] = now
-        # Replace the schema atomically before returning any authorization.
-        atomic_write(metadata_path, json.dumps(metadata, separators=(",", ":")) + "\n")
-        Path(token_path).unlink(missing_ok=True)
-        Path(session_dir).mkdir(parents=True, exist_ok=True, mode=0o700)
-        os.chmod(session_dir, 0o700)
-        session_id = secrets.token_urlsafe(32)
-        session = {"version": 1, "created_at": now, "expires_at": now + SESSION_TTL}
-        atomic_write(session_path(session_dir, session_id), json.dumps(session, separators=(",", ":")) + "\n")
-        return session_id
-
-
-def validate_session(session_id, session_dir, now=None):
-    now = int(time.time() if now is None else now)
-    if not isinstance(session_id, str) or len(session_id) < 32:
-        raise ClaimError("Provisioning session není platná.")
-    try:
-        value = read_json(session_path(session_dir, session_id))
-    except (OSError, json.JSONDecodeError, ClaimError) as exc:
-        raise ClaimError("Provisioning session není dostupná.") from exc
-    if set(value) != {"version", "created_at", "expires_at"} or value["version"] != 1:
-        raise ClaimError("Provisioning session má poškozený stav.")
-    if not isinstance(value["expires_at"], int) or now > value["expires_at"]:
-        raise ClaimError("Provisioning session vypršela.")
-    return True
-
-
-def consume_session(session_id, session_dir):
-    session_path(session_dir, session_id).unlink(missing_ok=True)
-
 
 def validate_authorized_key(path, expected_uid, expected_gid=None):
     path = Path(path)
@@ -213,7 +135,7 @@ def validate_authorized_key(path, expected_uid, expected_gid=None):
 
 def validate_generic_access(state, passwd_text, shadow_text, home_path,
                             expected_uid=1000, expected_gid=1000):
-    active_states = {"pending", "claim_pending", "key_generation_pending", "complete"}
+    active_states = {"pending", "claim_pending", "complete"}
     if state not in active_states:
         raise ClaimError("Stav neumožňuje generic přístup.")
     accounts = [line.split(":") for line in passwd_text.splitlines() if line]

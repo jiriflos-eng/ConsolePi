@@ -11,19 +11,6 @@
     <div class="notice {{ category }}">{{ message }}</div>
   {% endfor %}
 
-  {% if ownership_required %}
-  <section class="setup-card">
-    <h2>Ověření správce</h2>
-    <p>Nejprve se přihlaste přes SSH privátním klíčem odpovídajícím veřejnému klíči vloženému Raspberry Pi Imagerem a zobrazte jednorázový token:</p>
-    <pre>ssh -i "$HOME/.ssh/consolepi-admin" consolepi@IP_ADRESA "cat ~/.consolepi-firstboot-token"</pre>
-    <p>Token vznikl až na tomto zařízení a není součástí generic image.</p>
-    <form method="post" class="setup-form">
-      <input type="hidden" name="csrf" value="{{ csrf }}">
-      <label>Jednorázový autorizační token<input type="password" name="ownership_token" required minlength="32" maxlength="128" autocomplete="off"></label>
-      <button type="submit">Ověřit držení privátního klíče</button>
-    </form>
-  </section>
-  {% else %}
   <form method="post" class="setup-form">
     <input type="hidden" name="csrf" value="{{ csrf }}">
     <section class="setup-card">
@@ -46,11 +33,17 @@
       <span class="setup-step">3</span>
       <div><h2>Administrativní SSH přístup</h2><p>Vyberte, jak se po dokončení průvodce přihlásíte na port SSH 22 jako uživatel <code>consolepi</code>. Privátní klíč se nikdy neukládá na ConsolePi.</p></div>
       <div class="setup-key-options">
-        {% if admin_key_present %}<label class="setup-key-option"><input type="radio" name="admin_key_mode" value="keep" checked><span><strong>Ponechat stávající klíč</strong><small>Bezpečná výchozí volba zachová veřejný klíč dodaný Raspberry Pi Imagerem.</small></span></label>{% endif %}
-        <label class="setup-key-option"><input type="radio" name="admin_key_mode" value="existing"><span><strong>Vložit existující veřejný klíč</strong><small>Vložte celý obsah souboru <code>consolepi-admin.pub</code>. Stávající dočasný přístup se nahradí tímto klíčem.</small></span></label>
-        <label class="setup-key-option"><input type="radio" name="admin_key_mode" value="generate"{% if not admin_key_present %} checked{% endif %}><span><strong>Vytvořit nový osobní klíč</strong><small>Po dokončení průvodce se klíč jednou stáhne do počítače. Uložte jej bezpečně a nastavte jej v SecureCRT jako Identity File.</small></span></label>
+        {% if generic_firstboot %}
+        <label class="setup-key-option"><input type="radio" name="admin_key_mode" value="keep" checked><span><strong>Ponechat klíč z Raspberry Pi Imageru</strong><small>Tento klíč zůstane administrativním SSH klíčem. Po dokončení průvodce jej lze změnit v administraci ConsolePi.</small></span></label>
+        {% else %}
+        {% if admin_key_present %}<label class="setup-key-option"><input type="radio" name="admin_key_mode" value="keep" checked><span><strong>Ponechat stávající klíč</strong><small>Bezpečná výchozí volba zachová současný veřejný klíč.</small></span></label>{% endif %}
+        <label class="setup-key-option"><input type="radio" name="admin_key_mode" value="existing"><span><strong>Vložit existující veřejný klíč</strong><small>Vložte celý obsah souboru <code>consolepi-admin.pub</code>.</small></span></label>
+        <label class="setup-key-option"><input type="radio" name="admin_key_mode" value="generate"{% if not admin_key_present %} checked{% endif %}><span><strong>Vytvořit nový osobní klíč</strong><small>Po dokončení průvodce se klíč jednou stáhne do počítače.</small></span></label>
+        {% endif %}
       </div>
-      <label class="setup-public-key">Veřejný SSH klíč (jen při první volbě)<textarea name="admin_public_key" maxlength="2048" autocapitalize="none" autocomplete="off" spellcheck="false" placeholder="ssh-ed25519 AAAAC3... moje-zarizeni"></textarea></label>
+      {% if not generic_firstboot %}
+      <label class="setup-public-key">Veřejný SSH klíč<textarea name="admin_public_key" maxlength="2048" autocapitalize="none" autocomplete="off" spellcheck="false" placeholder="ssh-ed25519 AAAAC3... moje-zarizeni"></textarea></label>
+      {% endif %}
     </section>
 
     <section class="setup-card setup-summary">
@@ -64,6 +57,5 @@
     </section>
     <button type="submit">Dokončit základní nastavení</button>
   </form>
-  {% endif %}
 </section>
 {% endblock %}
