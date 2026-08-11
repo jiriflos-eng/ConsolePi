@@ -168,6 +168,17 @@ grep -q 'elements = { MANAGEMENT_CIDR }' "$ROOT/etc/nftables.conf" &&
     ok "nftables management placeholder" ||
     bad "nftables management placeholder missing"
 
+dhcp_silent_drop='ip saddr 0.0.0.0 ip daddr 255.255.255.255 udp sport 68 udp dport 67 counter drop'
+for firewall_source in "$ROOT/etc/nftables.conf" "$ROOT/usr/local/sbin/consolepi-control"; do
+    dhcp_line=$(grep -nF "$dhcp_silent_drop" "$firewall_source" | head -n 1 | cut -d: -f1)
+    log_line=$(grep -nF 'log prefix "nft-input-drop: "' "$firewall_source" | head -n 1 | cut -d: -f1)
+    if [ -n "$dhcp_line" ] && [ -n "$log_line" ] && [ "$dhcp_line" -lt "$log_line" ]; then
+        ok "silent DHCP drop precedes nft-input-drop in ${firewall_source#"$ROOT"/}"
+    else
+        bad "silent DHCP drop ordering invalid in ${firewall_source#"$ROOT"/}"
+    fi
+done
+
 grep -q 'def access_add' "$ROOT/usr/local/sbin/consolepi-control" &&
     grep -q 'access migrate' "$ROOT/install.sh" &&
     grep -q 'Povolené zdroje přístupu' "$ROOT/opt/consolepi-web/templates/index.html" &&
