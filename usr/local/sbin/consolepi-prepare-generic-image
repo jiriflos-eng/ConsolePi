@@ -277,7 +277,12 @@ sys.path.insert(0, "/usr/local/lib")
 from consolepi_imager_security import remove_legacy_cmdline_placeholder
 remove_legacy_cmdline_placeholder(sys.argv[1])
 PY
-ln -s "$boot_relative/cmdline.txt" /boot/cmdline.txt
+if [ -L /boot/cmdline.txt ]; then
+    [ "$(readlink /boot/cmdline.txt)" = "$boot_relative/cmdline.txt" ] ||
+        fail '/boot/cmdline.txt má neočekávaný symlink target'
+else
+    ln -s "$boot_relative/cmdline.txt" /boot/cmdline.txt
+fi
 
 install -m 0600 "$prep_dir/imager-systemd-compat" "$STATE_DIR/.imager-systemd-compat.new"
 mv -f "$STATE_DIR/.imager-systemd-compat.new" "$STATE_DIR/imager-systemd-compat"

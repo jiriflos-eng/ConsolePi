@@ -64,7 +64,28 @@ def _validated_legacy_cmdline(path, expected_uid=0, expected_gid=0):
         return None
     except OSError as exc:
         raise ImagerImportError("legacy cmdline path cannot be inspected") from exc
-    if (not stat.S_ISREG(before.st_mode) or stat.S_ISLNK(before.st_mode) or
+
+    if stat.S_ISLNK(before.st_mode):
+        if before.st_uid != expected_uid or before.st_gid != expected_gid or before.st_nlink != 1:
+            raise ImagerImportError("legacy cmdline symlink has unsafe metadata")
+        try:
+            link_target = os.readlink(path)
+        except OSError as exc:
+            raise ImagerImportError("legacy cmdline symlink cannot be inspected") from exc
+        if link_target != "firmware/cmdline.txt":
+            raise ImagerImportError("legacy cmdline symlink has unexpected target")
+        target = path.parent / link_target
+        try:
+            target_info = target.lstat()
+        except OSError as exc:
+            raise ImagerImportError("legacy cmdline symlink target cannot be inspected") from exc
+        if (not stat.S_ISREG(target_info.st_mode) or stat.S_ISLNK(target_info.st_mode) or
+                target_info.st_uid != expected_uid or target_info.st_gid != expected_gid or
+                target_info.st_nlink != 1):
+            raise ImagerImportError("legacy cmdline symlink target is unsafe")
+        return before
+
+    if (not stat.S_ISREG(before.st_mode) or
             before.st_uid != expected_uid or before.st_gid != expected_gid or
             stat.S_IMODE(before.st_mode) != 0o644 or before.st_nlink != 1):
         raise ImagerImportError("legacy cmdline path is not the safe Raspberry Pi OS placeholder")
@@ -97,6 +118,8 @@ def remove_legacy_cmdline_placeholder(path, expected_uid=0, expected_gid=0):
     path = Path(path)
     validated = _validated_legacy_cmdline(path, expected_uid, expected_gid)
     if validated is None:
+        return False
+    if stat.S_ISLNK(validated.st_mode):
         return False
     try:
         current = path.lstat()

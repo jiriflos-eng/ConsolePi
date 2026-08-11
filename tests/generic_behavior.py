@@ -350,6 +350,18 @@ def test_legacy_cmdline_placeholder(root):
     os.chmod(cmdline, 0o644)
     expect_failure(imager_security.validate_legacy_cmdline, cmdline, uid, gid)
     cmdline.unlink()
+
+    firmware = root / "firmware"
+    firmware.mkdir()
+    firmware_cmdline = firmware / "cmdline.txt"
+    firmware_cmdline.write_text("console=tty1 root=/dev/mmcblk0p2 rootwait\n")
+    cmdline.symlink_to("firmware/cmdline.txt")
+    assert imager_security.validate_legacy_cmdline(cmdline, uid, gid)
+    assert not imager_security.remove_legacy_cmdline_placeholder(cmdline, uid, gid)
+    assert cmdline.is_symlink()
+    assert str(cmdline.readlink()) == "firmware/cmdline.txt"
+    cmdline.unlink()
+
     target = root / "target"
     target.write_bytes(imager_security.LEGACY_CMDLINE_PLACEHOLDER)
     cmdline.symlink_to(target)
@@ -389,6 +401,8 @@ def test_imager_key_and_firstrun(root):
     for path in (wrapper, active, vendor): os.chmod(path, 0o755)
     imager_security.restore_vendor_entrypoint(active, vendor, wrapper, os.getuid(), os.getgid())
     assert active.read_text() == "vendor\n" and not vendor.exists()
+    assert "[ -L /boot/cmdline.txt ]" in sanitizer
+    assert "readlink /boot/cmdline.txt" in sanitizer
     assert 'ln -s "$boot_relative/cmdline.txt" /boot/cmdline.txt' in sanitizer
 
     # Raspberry Pi Imager requires a username/password customization entry.
