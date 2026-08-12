@@ -97,6 +97,17 @@ def test_generic_update_and_validation_report(root):
     assert "validate_generic_image_report" in firstboot_script
     assert "<<'PY' ||\n" not in firstboot_script
     assert '"status": sys.argv[1]' in validator
+    assert "mktemp -d /run/consolepi-sshd-check.XXXXXX" in validator
+    assert "[ ! -e /run/sshd ] && [ ! -L /run/sshd ]" in validator
+    assert "stat -c '%F:%U:%G:%a' /run/sshd" in validator
+    assert "rmdir /run/sshd" in validator
+    assert "ssh-keygen -q -t ed25519 -N ''" in validator
+    assert 'sshd -t -h "$ssh_check_dir/ssh_host_ed25519_key"' in validator
+    assert validator.index("check ssh_host_keys_absent") < validator.index(
+        "check ssh_syntax validate_sshd_without_installed_host_keys")
+    assert validator.index("check ssh_syntax validate_sshd_without_installed_host_keys") < validator.index(
+        "check ssh_host_keys_still_absent")
+    assert 'rm -f "$ssh_check_dir/ssh_host_ed25519_key"' in validator
 
 
 
