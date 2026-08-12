@@ -313,17 +313,26 @@ def test_active_state_and_markers(root):
 def test_standard_isolation():
     installer = (ROOT / "install.sh").read_text()
     standard_ssh = (ROOT / "etc/ssh/sshd_config.d/40-consolepi.conf").read_bytes()
-    baseline = subprocess.check_output(
-        [
-            "git",
-            "-c",
-            f"safe.directory={ROOT}",
-            "show",
-            "HEAD:etc/ssh/sshd_config.d/40-consolepi.conf",
-        ],
-        cwd=ROOT,
-    )
-    assert standard_ssh == baseline
+    if (ROOT / ".git").exists():
+        baseline = subprocess.check_output(
+            [
+                "git",
+                "-c",
+                f"safe.directory={ROOT}",
+                "show",
+                "HEAD:etc/ssh/sshd_config.d/40-consolepi.conf",
+            ],
+            cwd=ROOT,
+        )
+        assert standard_ssh == baseline
+    else:
+        # Release archives intentionally omit .git.  Still verify the exact
+        # standard-only properties instead of silently skipping isolation.
+        text = standard_ssh.decode()
+        assert "Match User consolepi" not in text
+        assert "39-consolepi-generic-image.conf" not in text
+        assert "Match User console LocalPort 2201" in text
+        assert "Match User console LocalPort 2204" in text
     assert "systemctl enable consolepi-generic-image-firstboot" not in installer
     assert "service.d/consolepi-generic-image.conf" not in installer
     assert "imager-systemd-compat" not in installer
