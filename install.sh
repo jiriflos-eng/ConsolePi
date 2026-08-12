@@ -287,7 +287,10 @@ if [ "$UPDATE_MODE" = yes ]; then
     # Běžná aktualizace překladač nepotřebuje: hotový PAM modul se zachová.
     # Starší instalace ale mohly vzniknout po ručním odstranění modulu.
     # V takovém případě jej opravíme jednorázově z aktuálního zdroje.
-    PAM_MODULE=$(find /lib -path '*/security/pam_consolepi_user.so' -type f -print -quit 2>/dev/null || true)
+    # Raspberry Pi OS uses merged-/usr, where /lib is a symlink to /usr/lib.
+    # find(1) does not follow a symlink passed as its starting point by default,
+    # so inspect the canonical /usr/lib tree as well.
+    PAM_MODULE=$(find /lib /usr/lib -path '*/security/pam_consolepi_user.so' -type f -print -quit 2>/dev/null || true)
     [ -n "$PAM_MODULE" ] || {
         printf '%s\n' 'Chybí PAM modul ConsolePi; provádím jednorázovou opravu.'
         apt-get update

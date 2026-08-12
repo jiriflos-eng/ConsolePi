@@ -188,6 +188,10 @@ grep -q 'def access_add' "$ROOT/usr/local/sbin/consolepi-control" &&
     ok "firewall allowlist sources" ||
     bad "firewall allowlist sources missing"
 
+grep -Fq "find /lib /usr/lib -path '*/security/pam_consolepi_user.so'" "$ROOT/install.sh" &&
+    ok "merged-/usr PAM module detection" ||
+    bad "merged-/usr PAM module detection missing"
+
 grep -q 'def factory_reset' "$ROOT/usr/local/sbin/consolepi-control" &&
     grep -q 'factory reset' "$ROOT/usr/local/sbin/consolepi-admin-menu" &&
     grep -q 'system/factory-reset' "$ROOT/opt/consolepi-web/app.py" &&
