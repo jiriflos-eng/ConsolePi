@@ -24,6 +24,7 @@ for file in \
     "$ROOT/usr/local/sbin/consolepi-generic-image-firstboot" \
     "$ROOT/usr/local/sbin/consolepi-generic-recovery" \
     "$ROOT/usr/local/sbin/consolepi-prepare-generic-image" \
+    "$ROOT/usr/local/sbin/consolepi-validate-generic-image" \
     "$ROOT/usr/local/libexec/consolepi-imager-custom-guard" \
     "$ROOT/usr/local/libexec/consolepi-imager-userconf-guard" \
     "$ROOT/etc/profile.d/consolepi-status.sh" \
@@ -33,6 +34,11 @@ for file in \
 do
     if sh -n "$file"; then ok "shell syntax $file"; else bad "shell syntax $file"; fi
 done
+
+grep -q 'xattr -cr "$STAGING"' "$ROOT/tools/build-install-bundle.sh" &&
+    grep -q 'tar --no-xattrs -C "$STAGING"' "$ROOT/tools/build-install-bundle.sh" &&
+    ok "macOS extended attributes removed from install bundle" ||
+    bad "install bundle does not remove macOS extended attributes"
 
 if command -v zsh >/dev/null 2>&1; then
     for file in \
@@ -63,6 +69,10 @@ python3 -c 'import ast, pathlib; [ast.parse(pathlib.Path(p).read_text()) for p i
     "'"$ROOT"'/usr/local/lib/consolepi_imager_security.py",
     "'"$ROOT"'/usr/local/lib/consolepi_generic_recovery.py"
 )]' && ok "strict Imager guard Python syntax" || bad "strict Imager guard Python syntax"
+
+python3 -c 'import ast, pathlib; ast.parse(pathlib.Path(
+    "'"$ROOT"'/usr/local/lib/consolepi_firstboot_security.py").read_text())' &&
+    ok "first-boot security Python syntax" || bad "first-boot security Python syntax"
 
 python3 "$ROOT/tests/generic_behavior.py" || bad "generic image behavioral security tests"
 if [ "${CONSOLEPI_SKIP_ARCHIVE_TEST:-0}" != 1 ]; then
@@ -211,6 +221,13 @@ grep -q 'def logs_read' "$ROOT/usr/local/sbin/consolepi-control" &&
     grep -q 'data-theme-toggle' "$ROOT/opt/consolepi-web/templates/_navigation.html" &&
     ok "log viewer and theme switch" ||
     bad "log viewer or theme switch missing"
+
+grep -q 'include "_attribution.html"' "$ROOT/opt/consolepi-web/templates/base.html" &&
+    grep -q 'nejde o produkt ani' "$ROOT/opt/consolepi-web/templates/_attribution.html" &&
+    grep -q '^## Acknowledgements$' "$ROOT/README.md" &&
+    grep -q '^## Poděkování$' "$ROOT/README.cs.md" &&
+    ok "transparent AI development acknowledgement" ||
+    bad "AI development acknowledgement missing"
 
 grep -q 'TRANSCRIPT_MODE' "$ROOT/etc/consolepi/consolepi.conf" &&
     grep -q 'CITLIVY OBSAH ODSTRANEN' "$ROOT/usr/local/sbin/consolepi-transcript-writer" &&

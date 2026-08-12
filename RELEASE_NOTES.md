@@ -1,3 +1,10 @@
+# ConsolePi 1.6.1 · Spolehlivá příprava generic image
+
+- Sanitizaci lze spustit volbou `--poweroff` jako samostatnou systemd úlohu; přerušení SSH relace ji nezastaví.
+- Zařízení se vypne pouze po úplné post-sanitizační kontrole a vytvoření zabezpečeného persistentního PASS reportu.
+- Generic first boot vyžaduje platný PASS report, takže neúplný nebo neověřený master zůstane fail-closed.
+- Aktualizace rozpracovaného generic webového provisioningu již nevyžaduje dočasné sdílené heslo.
+
 # ConsolePi 1.6.0 · Test plynulé aktualizace
 
 - Testovací vydání ověřuje bezvarovné rozbalení aktualizace ve verzi 1.5.1 a novější.
