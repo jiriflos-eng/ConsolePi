@@ -11,6 +11,8 @@ umask 077
 STATE_DIR=/etc/consolepi
 REPORT=$STATE_DIR/generic-image-validation.json
 report_tmp=
+ssh_check_dir=
+ssh_runtime_created=no
 
 write_report()
 {
@@ -45,6 +47,14 @@ cleanup()
     status=$?
     trap - EXIT HUP INT TERM
     [ -z "$report_tmp" ] || rm -f "$report_tmp"
+    if [ -n "$ssh_check_dir" ]; then
+        rm -f "$ssh_check_dir/ssh_host_ed25519_key" \
+            "$ssh_check_dir/ssh_host_ed25519_key.pub"
+        rmdir "$ssh_check_dir" 2>/dev/null || true
+    fi
+    if [ "$ssh_runtime_created" = yes ]; then
+        rmdir /run/sshd 2>/dev/null || true
+    fi
     exit "$status"
 }
 trap cleanup EXIT HUP INT TERM
@@ -62,6 +72,33 @@ check()
     shift
     "$@" || fail "$name"
     printf 'OK: %s\n' "$name"
+}
+
+validate_sshd_without_installed_host_keys()
+{
+    # OpenSSH on Raspberry Pi OS requires at least one usable host key even
+    # for -t/-T.  Use an ephemeral key in /run so the sanitised image keeps no
+    # persistent device identity.
+    if [ ! -e /run/sshd ] && [ ! -L /run/sshd ]; then
+        mkdir -m 0755 /run/sshd || return 1
+        ssh_runtime_created=yes
+        chown root:root /run/sshd || return 1
+    fi
+    [ -d /run/sshd ] && [ ! -L /run/sshd ] || return 1
+    [ "$(stat -c '%F:%U:%G:%a' /run/sshd)" = 'directory:root:root:755' ] || return 1
+    ssh_check_dir=$(mktemp -d /run/consolepi-sshd-check.XXXXXX) || return 1
+    chmod 0700 "$ssh_check_dir" || return 1
+    ssh-keygen -q -t ed25519 -N '' \
+        -f "$ssh_check_dir/ssh_host_ed25519_key" || return 1
+    sshd -t -h "$ssh_check_dir/ssh_host_ed25519_key" || return 1
+    rm -f "$ssh_check_dir/ssh_host_ed25519_key" \
+        "$ssh_check_dir/ssh_host_ed25519_key.pub" || return 1
+    rmdir "$ssh_check_dir" || return 1
+    ssh_check_dir=
+    if [ "$ssh_runtime_created" = yes ]; then
+        rmdir /run/sshd || return 1
+        ssh_runtime_created=no
+    fi
 }
 
 [ "$(id -u)" -eq 0 ] || { printf '%s\n' 'Spusťte jako root.' >&2; exit 1; }
@@ -109,7 +146,8 @@ for service in ssh nginx consolepi-web; do
 done
 check imager_custom_guard sh -c 'test -x /usr/lib/raspberrypi-sys-mods/imager_custom && test -f /usr/lib/raspberrypi-sys-mods/imager_custom.consolepi-vendor'
 check imager_userconf_guard sh -c 'test -x /usr/lib/userconf-pi/userconf && test -f /usr/lib/userconf-pi/userconf.consolepi-vendor'
-check ssh_syntax sshd -t
+check ssh_syntax validate_sshd_without_installed_host_keys
+check ssh_host_keys_still_absent sh -c '! find /etc/ssh -maxdepth 1 -name "ssh_host_*" -print -quit | grep -q .'
 check nftables_syntax nft -c -f /etc/nftables.conf
 check silent_dhcp_drop grep -q '0.0.0.0.*255.255.255.255.*sport 68.*dport 67.*drop' /etc/nftables.conf
 check systemd_units systemd-analyze verify /etc/systemd/system/consolepi-generic-image-firstboot.service /etc/systemd/system/consolepi-generic-recovery.service
