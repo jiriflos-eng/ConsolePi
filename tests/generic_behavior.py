@@ -251,7 +251,14 @@ def test_standard_isolation():
     installer = (ROOT / "install.sh").read_text()
     standard_ssh = (ROOT / "etc/ssh/sshd_config.d/40-consolepi.conf").read_bytes()
     baseline = subprocess.check_output(
-        ["git", "show", "HEAD:etc/ssh/sshd_config.d/40-consolepi.conf"], cwd=ROOT
+        [
+            "git",
+            "-c",
+            f"safe.directory={ROOT}",
+            "show",
+            "HEAD:etc/ssh/sshd_config.d/40-consolepi.conf",
+        ],
+        cwd=ROOT,
     )
     assert standard_ssh == baseline
     assert "systemctl enable consolepi-generic-image-firstboot" not in installer
