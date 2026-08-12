@@ -71,6 +71,58 @@ def claim_required(firstboot_path, generic_path):
     return generic_state(firstboot_path, generic_path) not in {"standard", "complete"}
 
 
+def _read_secure_state(path, expected_uid=0):
+    path = Path(path)
+    try:
+        info = path.lstat()
+    except OSError as exc:
+        raise ClaimError("Stavový soubor chybí.") from exc
+    if (not stat.S_ISREG(info.st_mode) or stat.S_ISLNK(info.st_mode) or
+            info.st_uid != expected_uid or info.st_nlink != 1 or
+            stat.S_IMODE(info.st_mode) & 0o022):
+        raise ClaimError("Stavový soubor nemá bezpečná metadata.")
+    try:
+        value = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ClaimError("Stavový soubor není platný JSON.") from exc
+    if not isinstance(value, dict):
+        raise ClaimError("Stav není JSON objekt.")
+    return value
+
+
+def generic_web_setup_pending(firstboot_path, generic_path, expected_uid=0):
+    """Allow an update without web.auth only during an intact generic setup."""
+    firstboot = _read_secure_state(firstboot_path, expected_uid)
+    generic = _read_secure_state(generic_path, expected_uid)
+    return (firstboot.get("state") == "pending" and
+            firstboot.get("reason") == "generic_image" and
+            generic.get("state") in {"pending", "claim_pending"})
+
+
+def validate_generic_image_report(path, expected_uid=0, expected_gid=0):
+    path = Path(path)
+    try:
+        info = path.lstat()
+    except OSError as exc:
+        raise ClaimError("Post-sanitizační validační report chybí.") from exc
+    if (not stat.S_ISREG(info.st_mode) or stat.S_ISLNK(info.st_mode) or
+            info.st_uid != expected_uid or info.st_gid != expected_gid or
+            info.st_nlink != 1 or stat.S_IMODE(info.st_mode) != 0o600):
+        raise ClaimError("Post-sanitizační validační report nemá bezpečná metadata.")
+    try:
+        value = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ClaimError("Post-sanitizační validační report není platný JSON.") from exc
+    expected = {
+        "format": "consolepi-generic-validation-1",
+        "status": "pass",
+        "check": "complete",
+    }
+    if value != expected:
+        raise ClaimError("Post-sanitizační validace masteru neskončila PASS.")
+    return True
+
+
 def write_generic_state(path, state):
     if state not in KNOWN_GENERIC_STATES:
         raise ClaimError("Neznámý generic-image stav.")

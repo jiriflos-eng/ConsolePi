@@ -4,6 +4,8 @@ set -eu
 
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 export PATH
+LC_ALL=C
+export LC_ALL
 umask 077
 
 STATE_DIR=/etc/consolepi
@@ -17,6 +19,28 @@ VENDOR_USERCONF=/usr/lib/userconf-pi/userconf
 destructive=no
 prep_dir=
 boot_mount=
+poweroff_after_validation=no
+detached_run=no
+
+usage()
+{
+    cat <<'EOF'
+Použití: sudo consolepi-prepare-generic-image [--poweroff]
+
+Bez volby provede sanitizaci a validaci, ale zařízení nevypne.
+--poweroff po potvrzení předá destruktivní běh samostatné systemd úloze a
+vypne zařízení pouze po úplném úspěchu post-sanitizační validace.
+EOF
+}
+
+case "${1:-}" in
+    '') ;;
+    --poweroff) poweroff_after_validation=yes ;;
+    --poweroff-internal) poweroff_after_validation=yes; detached_run=yes ;;
+    -h|--help) usage; exit 0 ;;
+    *) usage >&2; exit 2 ;;
+esac
+[ "$#" -le 1 ] || { usage >&2; exit 2; }
 
 cleanup()
 {
@@ -32,13 +56,21 @@ cleanup()
 }
 trap cleanup EXIT HUP INT TERM
 
-fail() { printf 'Preflight generic image: %s\n' "$*" >&2; exit 1; }
+fail()
+{
+    printf 'Preflight generic image: %s\n' "$*" >&2
+    if [ "$destructive" = yes ] && [ -x /usr/local/sbin/consolepi-validate-generic-image ]; then
+        /usr/local/sbin/consolepi-validate-generic-image >/dev/null 2>&1 || true
+    fi
+    exit 1
+}
 
 [ "$(id -u)" -eq 0 ] || fail 'spusťte jako root (sudo)'
 [ "$(id -u consolepi 2>/dev/null)" = 1000 ] || fail 'účet consolepi musí mít UID 1000'
 id console >/dev/null 2>&1 || fail 'chybí účet console'
 getent group consolepi-web >/dev/null 2>&1 || fail 'chybí skupina consolepi-web'
 [ -x /usr/local/sbin/consolepi-generic-image-firstboot ] || fail 'chybí first-boot program'
+[ -x /usr/local/sbin/consolepi-validate-generic-image ] || fail 'chybí post-sanitizační validátor'
 [ -f /etc/systemd/system/consolepi-generic-image-firstboot.service ] || fail 'chybí first-boot unit'
 [ -x /usr/local/sbin/consolepi-generic-recovery ] || fail 'chybí physical-console recovery program'
 [ -f /usr/local/lib/consolepi_generic_recovery.py ] || fail 'chybí physical-console recovery modul'
@@ -66,7 +98,7 @@ done
 [ -f /usr/local/lib/consolepi_imager_security.py ] || fail 'chybí Imager security modul'
 [ -w /etc ] && [ -w "$STATE_DIR" ] && [ -w /home/consolepi ] || fail 'potřebné filesystémy nejsou zapisovatelné'
 [ "$(df -Pk "$STATE_DIR" | awk 'NR==2 {print $4}')" -ge 10240 ] || fail 'je potřeba alespoň 10 MiB volného místa'
-for command in awk cat cp df find findmnt getent grep hostnamectl install journalctl ln mktemp mount mv openssl passwd python3 readlink sshd ssh-keygen stat systemctl systemd-analyze truncate tty; do
+for command in awk cat cp df find findmnt getent grep hostnamectl install journalctl ln mktemp mount mountpoint mv nft openssl passwd python3 readlink sshd ssh-keygen stat sync systemctl systemd-analyze systemd-run truncate tty; do
     command -v "$command" >/dev/null 2>&1 || fail "chybí utilita $command"
 done
 
@@ -103,6 +135,7 @@ ast.parse(pathlib.Path(sys.argv[1]).read_text())
 PY
 sh -n "$IMAGER_CUSTOM_GUARD" || fail 'Imager custom guard není syntakticky platný'
 sh -n "$IMAGER_USER_GUARD" || fail 'Imager userconf guard není syntakticky platný'
+sh -n /usr/local/sbin/consolepi-validate-generic-image || fail 'post-sanitizační validátor není syntakticky platný'
 
 unexpected_accounts=$(python3 - <<'PY'
 import sys
@@ -199,12 +232,28 @@ systemd-analyze verify /etc/systemd/system/consolepi-generic-image-firstboot.ser
     fail 'kandidátní generic systemd konfigurace není platná'
 
 printf '%s\n' 'Tento krok nevratně odstraní klíče, identity a lokální tajemství z masteru.'
-printf '%s' 'Pro pokračování napište GENERIC: '
-IFS= read -r confirmation
-[ "$confirmation" = GENERIC ] || { printf '%s\n' 'Zrušeno.'; exit 0; }
+if [ "$detached_run" != yes ]; then
+    printf '%s' 'Pro pokračování napište GENERIC: '
+    IFS= read -r confirmation
+    [ "$confirmation" = GENERIC ] || { printf '%s\n' 'Zrušeno.'; exit 0; }
+    if [ "$poweroff_after_validation" = yes ]; then
+        if systemctl is-active --quiet consolepi-generic-image-preparation.service; then
+            fail 'generic image preparation už běží'
+        fi
+        systemd-run --unit=consolepi-generic-image-preparation --collect \
+            --property=Type=exec /usr/local/sbin/consolepi-prepare-generic-image \
+            --poweroff-internal >/dev/null
+        printf '%s\n' 'Sanitizace a validace pokračuje nezávisle na SSH.'
+        printf '%s\n' 'Zařízení se vypne pouze při výsledku PASS.'
+        printf '%s\n' 'Stav lze z lokální konzole sledovat příkazem:'
+        printf '%s\n' '  journalctl -fu consolepi-generic-image-preparation.service'
+        exit 0
+    fi
+fi
 
 destructive=yes
 install -m 0600 "$prep_dir/recovery.txt" "$RECOVERY"
+rm -f "$STATE_DIR/generic-image-validation.json"
 systemctl disable --now ssh nginx consolepi-web consolepi-port-monitor \
     consolepi-update-check.timer snmpd lldpd >/dev/null 2>&1 || true
 # Generic firstboot owns host-key creation. Prevent the vendor first-boot unit
@@ -314,6 +363,14 @@ systemctl daemon-reload
 systemctl enable consolepi-generic-image-firstboot.service consolepi-generic-recovery.service ssh nginx \
     consolepi-web consolepi-port-monitor consolepi-update-check.timer >/dev/null
 
-printf '%s\n' 'Master je sanitizován. Vypněte jej bez dalšího síťového startu:'
-printf '%s\n' '  systemctl poweroff'
-printf '%s\n' 'Teprve potom pořiďte image vypnuté karty.'
+/usr/local/sbin/consolepi-validate-generic-image || fail 'post-sanitizační validace selhala'
+if [ "$poweroff_after_validation" = yes ]; then
+    sync
+    printf '%s\n' 'Master je validní; zařízení se nyní vypne.'
+    systemctl poweroff
+else
+    printf '%s\n' 'Master je sanitizován a validace skončila PASS.'
+    printf '%s\n' 'Vypněte jej bez dalšího síťového startu:'
+    printf '%s\n' '  systemctl poweroff'
+    printf '%s\n' 'Teprve potom pořiďte image vypnuté karty.'
+fi

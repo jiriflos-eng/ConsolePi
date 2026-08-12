@@ -1,0 +1,118 @@
+#!/bin/sh
+# Validate a sanitised generic master without exposing or regenerating secrets.
+set -eu
+
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+export PATH
+LC_ALL=C
+export LC_ALL
+umask 077
+
+STATE_DIR=/etc/consolepi
+REPORT=$STATE_DIR/generic-image-validation.json
+report_tmp=
+
+write_report()
+{
+    status=$1
+    check_name=$2
+    report_tmp=$(mktemp "$STATE_DIR/.generic-image-validation.XXXXXX")
+    python3 - "$status" "$check_name" >"$report_tmp" <<'PY'
+import json, sys
+print(json.dumps({
+    "format": "consolepi-generic-validation-1",
+    "status": sys.argv[1],
+    "check": sys.argv[2],
+}, separators=(",", ":")))
+PY
+    chown root:root "$report_tmp"
+    chmod 0600 "$report_tmp"
+    sync "$report_tmp"
+    mv -f "$report_tmp" "$REPORT"
+    report_tmp=
+    python3 - "$STATE_DIR" <<'PY'
+import os, sys
+fd = os.open(sys.argv[1], os.O_RDONLY | os.O_DIRECTORY)
+try:
+    os.fsync(fd)
+finally:
+    os.close(fd)
+PY
+}
+
+cleanup()
+{
+    status=$?
+    trap - EXIT HUP INT TERM
+    [ -z "$report_tmp" ] || rm -f "$report_tmp"
+    exit "$status"
+}
+trap cleanup EXIT HUP INT TERM
+
+fail()
+{
+    write_report fail "$1"
+    printf 'Generic image validation failed: %s\n' "$1" >&2
+    exit 1
+}
+
+check()
+{
+    name=$1
+    shift
+    "$@" || fail "$name"
+    printf 'OK: %s\n' "$name"
+}
+
+[ "$(id -u)" -eq 0 ] || { printf '%s\n' 'Spusťte jako root.' >&2; exit 1; }
+[ -d "$STATE_DIR" ] && [ ! -L "$STATE_DIR" ] && [ -w "$STATE_DIR" ] || {
+    printf '%s\n' 'State directory is unsafe.' >&2
+    exit 1
+}
+
+check state_pending grep -qx '{"state":"pending"}' "$STATE_DIR/generic-image.json"
+check firstboot_pending grep -qx '{"state":"pending","reason":"generic_image"}' "$STATE_DIR/firstboot.json"
+check failure_absent sh -c 'test ! -e "$1" && test ! -L "$1"' sh "$STATE_DIR/generic-imager-customization-failed"
+check success_absent sh -c 'test ! -e "$1" && test ! -L "$1"' sh "$STATE_DIR/generic-imager-customization-imported"
+check audit_absent sh -c 'test ! -e "$1" && test ! -L "$1"' sh "$STATE_DIR/generic-imager-audit.jsonl"
+check recovery_active_absent sh -c 'test ! -e "$1" && test ! -L "$1"' sh "$STATE_DIR/generic-recovery-active"
+check consolepi_password_locked sh -c 'passwd -S consolepi | awk '\''$2 == "L" {ok=1} END {exit !ok}'\'''
+check console_password_locked sh -c 'passwd -S console | awk '\''$2 == "L" {ok=1} END {exit !ok}'\'''
+check authorized_keys_absent sh -c 'test ! -e "$1" && test ! -L "$1"' sh /home/consolepi/.ssh/authorized_keys
+check ssh_host_keys_absent sh -c '! find /etc/ssh -maxdepth 1 -name "ssh_host_*" -print -quit | grep -q .'
+check tls_identity_absent sh -c 'test ! -e /etc/consolepi/tls/consolepi.key && test ! -L /etc/consolepi/tls/consolepi.key && test ! -e /etc/consolepi/tls/consolepi.crt && test ! -L /etc/consolepi/tls/consolepi.crt'
+check web_secrets_absent sh -c 'test ! -e /etc/consolepi/web.secret && test ! -L /etc/consolepi/web.secret && test ! -e /etc/consolepi/web.auth && test ! -L /etc/consolepi/web.auth'
+check machine_id_content python3 -c 'from pathlib import Path; raise SystemExit(Path("/etc/machine-id").read_bytes() != b"uninitialized\n")'
+check machine_id_metadata sh -c 'test "$(stat -c "%F:%U:%G:%a:%h" /etc/machine-id)" = "regular file:root:root:444:1"'
+check dbus_machine_id_absent sh -c 'test ! -e /var/lib/dbus/machine-id && test ! -L /var/lib/dbus/machine-id'
+check random_seed_absent sh -c 'test ! -e /var/lib/systemd/random-seed && test ! -L /var/lib/systemd/random-seed'
+check backups_absent sh -c 'test ! -e /var/backups/consolepi && test ! -L /var/backups/consolepi'
+check cloud_runtime_empty sh -c 'test -z "$(find /var/lib/cloud -mindepth 1 -print -quit 2>/dev/null)"'
+check snmp_runtime_absent sh -c 'test ! -e /var/lib/snmp/snmpd.conf && test ! -L /var/lib/snmp/snmpd.conf'
+check apt_proxy_absent sh -c 'test ! -e /etc/apt/apt.conf.d/90consolepi-proxy && test ! -L /etc/apt/apt.conf.d/90consolepi-proxy'
+check one_ethernet_profile sh -c 'test "$(find /etc/NetworkManager/system-connections -mindepth 1 -maxdepth 1 -type f | wc -l)" -eq 1'
+check ethernet_credentials_absent sh -c '! grep -Eiq "(^|[-_])(psk|password|secret|private-key)[[:space:]]*=" /etc/NetworkManager/system-connections/*'
+
+boot_mount=$(cat "$STATE_DIR/imager-boot-mount") || fail boot_mount_state
+case "$boot_mount" in /boot/*) ;; *) fail boot_mount_state ;; esac
+check boot_mount sh -c 'mountpoint -q "$1" && test -f "$1/config.txt" && test -f "$1/cmdline.txt"' sh "$boot_mount"
+check boot_seeds_absent sh -c 'for f in user-data meta-data network-config firstrun.sh; do test ! -e "$1/$f" && test ! -L "$1/$f" || exit 1; done' sh "$boot_mount"
+check boot_cmdline_clean sh -c '! grep -Eq "(^|[[:space:]])(ds=nocloud|systemd.run=)" "$1/cmdline.txt"' sh "$boot_mount"
+boot_relative=${boot_mount#/boot/}
+check cmdline_bridge sh -c 'test -L /boot/cmdline.txt && test "$(readlink /boot/cmdline.txt)" = "$1/cmdline.txt"' sh "$boot_relative"
+
+check generic_ssh_dropin test -f /etc/ssh/sshd_config.d/39-consolepi-generic-image.conf
+check generic_firstboot_enabled systemctl is-enabled --quiet consolepi-generic-image-firstboot.service
+check generic_recovery_enabled systemctl is-enabled --quiet consolepi-generic-recovery.service
+for service in ssh nginx consolepi-web; do
+    check "${service}_dependency" test -f "/etc/systemd/system/$service.service.d/consolepi-generic-image.conf"
+done
+check imager_custom_guard sh -c 'test -x /usr/lib/raspberrypi-sys-mods/imager_custom && test -f /usr/lib/raspberrypi-sys-mods/imager_custom.consolepi-vendor'
+check imager_userconf_guard sh -c 'test -x /usr/lib/userconf-pi/userconf && test -f /usr/lib/userconf-pi/userconf.consolepi-vendor'
+check ssh_syntax sshd -t
+check nftables_syntax nft -c -f /etc/nftables.conf
+check silent_dhcp_drop grep -q '0.0.0.0.*255.255.255.255.*sport 68.*dport 67.*drop' /etc/nftables.conf
+check systemd_units systemd-analyze verify /etc/systemd/system/consolepi-generic-image-firstboot.service /etc/systemd/system/consolepi-generic-recovery.service
+
+write_report pass complete
+printf '%s\n' 'GENERIC_IMAGE_VALIDATION=PASS'

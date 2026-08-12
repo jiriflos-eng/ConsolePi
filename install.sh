@@ -11,6 +11,7 @@ INSTALL_FIREWALL=yes
 CHECK_ONLY=no
 UPDATE_MODE=no
 FIRSTBOOT_PENDING=no
+GENERIC_WEB_SETUP_PENDING=no
 
 usage()
 {
@@ -153,6 +154,7 @@ for target in \
     /usr/local/sbin/consolepi-generic-image-firstboot \
     /usr/local/sbin/consolepi-generic-recovery \
     /usr/local/sbin/consolepi-prepare-generic-image \
+    /usr/local/sbin/consolepi-validate-generic-image \
     /usr/local/lib/consolepi_firstboot_security.py \
     /usr/local/lib/consolepi_imager_security.py \
     /usr/local/lib/consolepi_generic_recovery.py \
@@ -257,6 +259,7 @@ install -m 0755 "$ROOT/usr/local/sbin/consolepi-update-check" /usr/local/sbin/co
 install -m 0755 "$ROOT/usr/local/sbin/consolepi-generic-image-firstboot" /usr/local/sbin/consolepi-generic-image-firstboot
 install -m 0755 "$ROOT/usr/local/sbin/consolepi-generic-recovery" /usr/local/sbin/consolepi-generic-recovery
 install -m 0755 "$ROOT/usr/local/sbin/consolepi-prepare-generic-image" /usr/local/sbin/consolepi-prepare-generic-image
+install -m 0755 "$ROOT/usr/local/sbin/consolepi-validate-generic-image" /usr/local/sbin/consolepi-validate-generic-image
 install -m 0644 "$ROOT/usr/local/lib/consolepi_firstboot_security.py" /usr/local/lib/consolepi_firstboot_security.py
 install -m 0644 "$ROOT/usr/local/lib/consolepi_imager_security.py" /usr/local/lib/consolepi_imager_security.py
 install -m 0644 "$ROOT/usr/local/lib/consolepi_generic_recovery.py" /usr/local/lib/consolepi_generic_recovery.py
@@ -392,6 +395,25 @@ if [ ! -s /etc/consolepi/tls/consolepi.key ] || [ ! -s /etc/consolepi/tls/consol
 fi
 
 if [ ! -s /etc/consolepi/web.auth ] && [ "$FIRSTBOOT_PENDING" != yes ]; then
+    if [ "$UPDATE_MODE" = yes ]; then
+        GENERIC_WEB_SETUP_PENDING=$(python3 - <<'PY'
+import sys
+sys.path.insert(0, "/usr/local/lib")
+from consolepi_firstboot_security import ClaimError, generic_web_setup_pending
+try:
+    pending = generic_web_setup_pending(
+        "/etc/consolepi/firstboot.json", "/etc/consolepi/generic-image.json"
+    )
+except ClaimError:
+    pending = False
+print("yes" if pending else "no")
+PY
+        )
+    fi
+fi
+
+if [ ! -s /etc/consolepi/web.auth ] && [ "$FIRSTBOOT_PENDING" != yes ] && \
+        [ "$GENERIC_WEB_SETUP_PENDING" != yes ]; then
     [ -t 0 ] || {
         printf '%s\n' 'První instalace webu vyžaduje interaktivní terminál pro zadání hesla.' >&2
         exit 1
@@ -411,6 +433,9 @@ if [ ! -s /etc/consolepi/web.auth ] && [ "$FIRSTBOOT_PENDING" != yes ]; then
     unset WEB_PASSWORD
     chmod 0640 /etc/consolepi/web.auth
     chown root:consolepi-web /etc/consolepi/web.auth
+fi
+if [ "$GENERIC_WEB_SETUP_PENDING" = yes ]; then
+    printf '%s\n' 'Aktualizace zachovává nedokončený generic webový provisioning bez dočasného hesla.'
 fi
 
 visudo -cf /etc/sudoers.d/consolepi-web

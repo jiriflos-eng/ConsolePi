@@ -131,12 +131,14 @@ provozovaném ConsolePi jej nespouštějte.
 
 1. Na referenčním zařízení s aktuální instalací ověřte, že účet consolepi má
    UID 1000 a že jsou nainstalované soubory generic-image režimu.
-2. Z lokální konzole spusťte:
+2. Z lokální konzole nebo přes SSH spusťte:
 
-       sudo consolepi-prepare-generic-image
+       sudo consolepi-prepare-generic-image --poweroff
 
    a potvrďte textem GENERIC. Program nejprve provede preflight a připraví
-   náhradní konfigurace. Potom odstraní hashe a uzamkne systémová hesla,
+   náhradní konfigurace. Destruktivní část potom pokračuje v samostatné
+   systemd úloze nezávislé na SSH relaci. Odpojení SSH je očekávané. Program
+   odstraní hashe a uzamkne systémová hesla,
    odstraní všechny uživatelské SSH klíče, hostitelské SSH a TLS klíče,
    webová, RADIUS, SNMPv3, proxy a síťová tajemství, zálohy, historie, logy,
    machine-id, DHCP lease, cloud-init runtime stav a všechny NoCloud seedy
@@ -149,8 +151,12 @@ provozovaném ConsolePi jej nespouštějte.
    volat. Ostatní operace vytvoří write-once persistentní failure marker;
    první důvod se dalšími pokusy nepřepisuje. Metadata volání guardů se bez
    argumentů a tajemství ukládají do root-only `generic-imager-audit.jsonl`.
-3. Ihned poté zařízení vypněte zobrazeným příkazem. Sanitizovaný master už
-   znovu nespouštějte před pořízením image vypnuté karty.
+3. Po sanitizaci proběhne nezávislá kontrola masteru. Výsledek se atomicky
+   uloží jako root-only report `/etc/consolepi/generic-image-validation.json`.
+   Zařízení se automaticky vypne pouze při výsledku PASS. Při selhání zůstane
+   zapnuté a fail-closed pro diagnostiku z lokální konzole; podrobnosti jsou v
+   `journalctl -u consolepi-generic-image-preparation.service`. Sanitizovaný
+   master už znovu nespouštějte před pořízením image vypnuté karty.
 4. Image před zveřejněním připojte jen pro čtení a ověřte, že neobsahuje
    žádný authorized_keys, ssh_host_* ani consolepi.key a že /etc/machine-id
    má přesně first-boot hodnotu `uninitialized`.
@@ -195,8 +201,16 @@ nahrazení obnoví z lokální zálohy.
 OBNOVA PO SELHÁNÍ SANITIZACE
 ----------------------------
 Sanitizace je záměrně fail-closed. Při chybě zařízení nepřipojujte do sítě a
-pokračujte pouze z lokální konzole. Skript vypíše příčinu a uloží postup do
+pokračujte pouze z lokální konzole. Skript vypíše příčinu, zapíše FAIL report
+do `/etc/consolepi/generic-image-validation.json` a uloží postup do
 `/etc/consolepi/generic-image-recovery.txt`. Preferovaný postup je odstranit
 příčinu (například nedostatek místa nebo chybnou systemd jednotku) a spustit
 `sudo consolepi-prepare-generic-image` znovu. Sanitizovaný master nepoužívejte
 v provozu a image z něj nevytvářejte, dokud skript neskončí úspěšně.
+
+
+PODĚKOVÁNÍ
+-----------
+ConsolePi byl vyvíjen s využitím nástrojů ChatGPT a OpenAI Codex. Za návrh,
+ověření a provoz odpovídají autoři projektu; nejde o produkt ani oficiálně
+podporovaný projekt společnosti OpenAI.

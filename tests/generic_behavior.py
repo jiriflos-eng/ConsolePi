@@ -37,6 +37,68 @@ def test_states(root):
     assert not security.claim_required(firstboot, generic)
 
 
+def test_generic_update_and_validation_report(root):
+    uid, gid = os.getuid(), os.getgid()
+    firstboot = root / "firstboot.json"
+    generic = root / "generic.json"
+    firstboot.write_text('{"state":"pending","reason":"generic_image"}\n')
+    generic.write_text('{"state":"pending"}\n')
+    os.chmod(firstboot, 0o600)
+    os.chmod(generic, 0o600)
+    assert security.generic_web_setup_pending(firstboot, generic, uid)
+    generic.write_text('{"state":"claim_pending"}\n')
+    assert security.generic_web_setup_pending(firstboot, generic, uid)
+    generic.write_text('{"state":"complete"}\n')
+    assert not security.generic_web_setup_pending(firstboot, generic, uid)
+    firstboot.write_text('{"state":"pending","reason":"factory_reset"}\n')
+    generic.write_text('{"state":"pending"}\n')
+    assert not security.generic_web_setup_pending(firstboot, generic, uid)
+    firstboot.write_text('{"state":"pending","reason":"generic_image"}\n')
+    os.chmod(generic, 0o622)
+    expect_failure(security.generic_web_setup_pending, firstboot, generic, uid)
+    os.chmod(generic, 0o600)
+    generic.unlink()
+    generic.symlink_to(root / "missing")
+    expect_failure(security.generic_web_setup_pending, firstboot, generic, uid)
+
+    report = root / "validation.json"
+    expected = {"format": "consolepi-generic-validation-1", "status": "pass", "check": "complete"}
+    report.write_text(json.dumps(expected, separators=(",", ":")) + "\n")
+    os.chmod(report, 0o600)
+    assert security.validate_generic_image_report(report, uid, gid)
+    report.write_text(json.dumps({**expected, "status": "fail"}) + "\n")
+    expect_failure(security.validate_generic_image_report, report, uid, gid)
+    report.write_text(json.dumps(expected) + " trailing\n")
+    expect_failure(security.validate_generic_image_report, report, uid, gid)
+    report.write_text(json.dumps(expected) + "\n")
+    os.chmod(report, 0o640)
+    expect_failure(security.validate_generic_image_report, report, uid, gid)
+    os.chmod(report, 0o600)
+    link = root / "validation-link.json"
+    link.symlink_to(report)
+    expect_failure(security.validate_generic_image_report, link, uid, gid)
+    hardlink = root / "validation-hardlink.json"
+    os.link(report, hardlink)
+    expect_failure(security.validate_generic_image_report, report, uid, gid)
+    hardlink.unlink()
+
+    installer = (ROOT / "install.sh").read_text()
+    firstboot_script = (ROOT / "usr/local/sbin/consolepi-generic-image-firstboot").read_text()
+    sanitizer = (ROOT / "usr/local/sbin/consolepi-prepare-generic-image").read_text()
+    validator = (ROOT / "usr/local/sbin/consolepi-validate-generic-image").read_text()
+    assert 'GENERIC_WEB_SETUP_PENDING=no' in installer
+    assert '[ "$UPDATE_MODE" = yes ]' in installer
+    assert 'generic_web_setup_pending(' in installer
+    assert "systemctl enable consolepi-validate-generic-image" not in installer
+    assert "consolepi-validate-generic-image" in sanitizer
+    assert sanitizer.index("consolepi-validate-generic-image") < sanitizer.rindex("systemctl poweroff")
+    assert '[ "$destructive" = yes ]' in sanitizer
+    assert "systemd-run --unit=consolepi-generic-image-preparation" in sanitizer
+    assert "validate_generic_image_report" in firstboot_script
+    assert "<<'PY' ||\n" not in firstboot_script
+    assert '"status": sys.argv[1]' in validator
+
+
 
 def make_key(directory, kind="ed25519"):
     private = directory / kind
@@ -158,7 +220,8 @@ def test_active_state_and_markers(root):
     both_failure = cases / "both-failure"; both_failure.write_text("failed\n")
     expect_failure(imager_security.validate_imager_markers, both_failure, owner, uid, gid)
 
-    write_once = root / "write-once"; write_once.mkdir()
+    write_once = root / "write-once"; write_once.mkdir(mode=0o700)
+    os.chmod(write_once, 0o700)
     first_failure = write_once / "failure"
     assert imager_security.mark_failure_once(first_failure, "first reason", uid, gid)
     assert not imager_security.mark_failure_once(first_failure, "second reason", uid, gid)
@@ -250,17 +313,26 @@ def test_active_state_and_markers(root):
 def test_standard_isolation():
     installer = (ROOT / "install.sh").read_text()
     standard_ssh = (ROOT / "etc/ssh/sshd_config.d/40-consolepi.conf").read_bytes()
-    baseline = subprocess.check_output(
-        [
-            "git",
-            "-c",
-            f"safe.directory={ROOT}",
-            "show",
-            "HEAD:etc/ssh/sshd_config.d/40-consolepi.conf",
-        ],
-        cwd=ROOT,
-    )
-    assert standard_ssh == baseline
+    if (ROOT / ".git").exists():
+        baseline = subprocess.check_output(
+            [
+                "git",
+                "-c",
+                f"safe.directory={ROOT}",
+                "show",
+                "HEAD:etc/ssh/sshd_config.d/40-consolepi.conf",
+            ],
+            cwd=ROOT,
+        )
+        assert standard_ssh == baseline
+    else:
+        # Release archives intentionally omit .git.  Still verify the exact
+        # standard-only properties instead of silently skipping isolation.
+        text = standard_ssh.decode()
+        assert "Match User consolepi" not in text
+        assert "39-consolepi-generic-image.conf" not in text
+        assert "Match User console LocalPort 2201" in text
+        assert "Match User console LocalPort 2204" in text
     assert "systemctl enable consolepi-generic-image-firstboot" not in installer
     assert "service.d/consolepi-generic-image.conf" not in installer
     assert "imager-systemd-compat" not in installer
@@ -540,9 +612,11 @@ def test_imager_key_and_firstrun(root):
 
 
 def main():
+    os.umask(0o022)
     with tempfile.TemporaryDirectory() as directory:
         root = pathlib.Path(directory)
         state_root = root / "states"; state_root.mkdir(); test_states(state_root)
+        update_root = root / "update"; update_root.mkdir(); test_generic_update_and_validation_report(update_root)
         key_root = root / "keys"; key_root.mkdir(); test_keys(key_root)
         imager_root = root / "imager"; imager_root.mkdir(); test_imager_key_and_firstrun(imager_root)
         invariant_root = root / "invariants"; invariant_root.mkdir(); test_active_state_and_markers(invariant_root)
