@@ -21,6 +21,11 @@ for file in \
     "$ROOT/usr/local/sbin/consolepi-diagnose" \
     "$ROOT/usr/local/sbin/consolepi-login-status" \
     "$ROOT/usr/local/sbin/consolepi-admin-menu" \
+    "$ROOT/usr/local/sbin/consolepi-generic-image-firstboot" \
+    "$ROOT/usr/local/sbin/consolepi-generic-recovery" \
+    "$ROOT/usr/local/sbin/consolepi-prepare-generic-image" \
+    "$ROOT/usr/local/libexec/consolepi-imager-custom-guard" \
+    "$ROOT/usr/local/libexec/consolepi-imager-userconf-guard" \
     "$ROOT/etc/profile.d/consolepi-status.sh" \
     "$ROOT/bootstrap-install.sh" \
     "$ROOT/tools/build-install-bundle.sh" \
@@ -51,6 +56,18 @@ python3 -c 'import ast, pathlib; [ast.parse(pathlib.Path(p).read_text()) for p i
 )]' &&
     ok "Python syntax" ||
     bad "Python syntax"
+
+python3 -c 'import ast, pathlib; [ast.parse(pathlib.Path(p).read_text()) for p in (
+    "'"$ROOT"'/usr/local/libexec/consolepi-imager-guard",
+    "'"$ROOT"'/usr/local/libexec/consolepi-imager-postvalidate",
+    "'"$ROOT"'/usr/local/lib/consolepi_imager_security.py",
+    "'"$ROOT"'/usr/local/lib/consolepi_generic_recovery.py"
+)]' && ok "strict Imager guard Python syntax" || bad "strict Imager guard Python syntax"
+
+python3 "$ROOT/tests/generic_behavior.py" || bad "generic image behavioral security tests"
+if [ "${CONSOLEPI_SKIP_ARCHIVE_TEST:-0}" != 1 ]; then
+    "$ROOT/tests/check-install-archive.sh" || bad "install archive credential scan"
+fi
 
 grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' "$ROOT/VERSION" &&
     grep -q 'consolepi-update-1' "$ROOT/usr/local/sbin/consolepi-release" &&
@@ -113,9 +130,54 @@ grep -q '^Match User console LocalPort 2201$' "$ROOT/etc/ssh/sshd_config.d/40-co
     ok "OpenSSH Match LocalPort" ||
     bad "OpenSSH Match LocalPort missing"
 
+! grep -q '^Match User consolepi$' "$ROOT/etc/ssh/sshd_config.d/40-consolepi.conf" &&
+    ! grep -q 'service.d/consolepi-generic-image.conf' "$ROOT/install.sh" &&
+    ! grep -q 'network-online.target' "$ROOT/etc/systemd/system/consolepi-generic-image-firstboot.service" &&
+    grep -q '39-consolepi-generic-image.conf' "$ROOT/usr/local/sbin/consolepi-prepare-generic-image" &&
+    grep -q 'Match User consolepi' "$ROOT/usr/local/sbin/consolepi-prepare-generic-image" &&
+    grep -q 'validate_generic_access' "$ROOT/usr/local/sbin/consolepi-generic-image-firstboot" &&
+    grep -q 'passwd -l consolepi' "$ROOT/usr/local/sbin/consolepi-prepare-generic-image" &&
+    grep -q 'rm -f /etc/ssh/ssh_host_' "$ROOT/usr/local/sbin/consolepi-prepare-generic-image" &&
+    grep -q 'pam_radius_auth.conf' "$ROOT/usr/local/sbin/consolepi-prepare-generic-image" &&
+    grep -q '/var/lib/snmp/snmpd.conf' "$ROOT/usr/local/sbin/consolepi-prepare-generic-image" &&
+    grep -q '/etc/apt/apt.conf.d/90consolepi-proxy' "$ROOT/usr/local/sbin/consolepi-prepare-generic-image" &&
+    grep -q '/var/backups/consolepi' "$ROOT/usr/local/sbin/consolepi-prepare-generic-image" &&
+    grep -q 'systemd-analyze verify' "$ROOT/usr/local/sbin/consolepi-prepare-generic-image" &&
+    grep -q 'validate_generic_access' "$ROOT/usr/local/sbin/consolepi-generic-image-firstboot" &&
+    ! grep -q '.consolepi-firstboot-token' "$ROOT/usr/local/sbin/consolepi-generic-image-firstboot" &&
+    ! grep -q 'ownership-verify' "$ROOT/usr/local/sbin/consolepi-maintenance" &&
+    ! grep -q 'setup_provisioning_session' "$ROOT/opt/consolepi-web/app.py" &&
+    grep -q 'generic_firstboot and key_mode != "keep"' "$ROOT/opt/consolepi-web/app.py" &&
+    grep -q 'value="keep" checked' "$ROOT/opt/consolepi-web/templates/setup.html" &&
+    grep -q 'sanitize_boot_partition' "$ROOT/usr/local/sbin/consolepi-prepare-generic-image" &&
+    grep -q 'clear_directory("/var/lib/cloud")' "$ROOT/usr/local/sbin/consolepi-prepare-generic-image" &&
+    grep -q 'imager-systemd-compat' "$ROOT/usr/local/sbin/consolepi-prepare-generic-image" &&
+    grep -q 'generic_pending' "$ROOT/usr/local/lib/consolepi_imager_security.py" &&
+    grep -q 'validate_userconf_request' "$ROOT/usr/local/libexec/consolepi-imager-guard" &&
+    grep -q 'consolepi-imager-postvalidate' "$ROOT/usr/local/sbin/consolepi-generic-image-firstboot" &&
+    grep -q 'consolepi-generic-recovery.service' "$ROOT/usr/local/sbin/consolepi-prepare-generic-image" &&
+    ! grep -q 'systemctl enable consolepi-generic-recovery' "$ROOT/install.sh" &&
+    grep -q 'generic-imager-customization-failed' "$ROOT/usr/local/sbin/consolepi-generic-image-firstboot" &&
+    ! grep -Eq 'consolepi-imager-(firstrun|import)' "$ROOT/install.sh" &&
+    grep -q 'NEZAPÍNEJTE.*Set username and password' "$ROOT/docs/INSTALACE-IMAGE-RPI-IMAGER.txt" &&
+    ! grep -q 'Use password authentication' "$ROOT/docs/INSTALACE-IMAGE-RPI-IMAGER.txt" &&
+    ok "generic image key-only first boot" ||
+    bad "generic image first-boot safeguards missing"
+
 grep -q 'elements = { MANAGEMENT_CIDR }' "$ROOT/etc/nftables.conf" &&
     ok "nftables management placeholder" ||
     bad "nftables management placeholder missing"
+
+dhcp_silent_drop='ip saddr 0.0.0.0 ip daddr 255.255.255.255 udp sport 68 udp dport 67 counter drop'
+for firewall_source in "$ROOT/etc/nftables.conf" "$ROOT/usr/local/sbin/consolepi-control"; do
+    dhcp_line=$(grep -nF "$dhcp_silent_drop" "$firewall_source" | head -n 1 | cut -d: -f1)
+    log_line=$(grep -nF 'log prefix "nft-input-drop: "' "$firewall_source" | head -n 1 | cut -d: -f1)
+    if [ -n "$dhcp_line" ] && [ -n "$log_line" ] && [ "$dhcp_line" -lt "$log_line" ]; then
+        ok "silent DHCP drop precedes nft-input-drop in ${firewall_source#"$ROOT"/}"
+    else
+        bad "silent DHCP drop ordering invalid in ${firewall_source#"$ROOT"/}"
+    fi
+done
 
 grep -q 'def access_add' "$ROOT/usr/local/sbin/consolepi-control" &&
     grep -q 'access migrate' "$ROOT/install.sh" &&
@@ -125,6 +187,10 @@ grep -q 'def access_add' "$ROOT/usr/local/sbin/consolepi-control" &&
     test -s "$ROOT/etc/consolepi/access-sources.json" &&
     ok "firewall allowlist sources" ||
     bad "firewall allowlist sources missing"
+
+grep -Fq "find /lib /usr/lib -path '*/security/pam_consolepi_user.so'" "$ROOT/install.sh" &&
+    ok "merged-/usr PAM module detection" ||
+    bad "merged-/usr PAM module detection missing"
 
 grep -q 'def factory_reset' "$ROOT/usr/local/sbin/consolepi-control" &&
     grep -q 'factory reset' "$ROOT/usr/local/sbin/consolepi-admin-menu" &&

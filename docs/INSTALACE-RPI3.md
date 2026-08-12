@@ -19,7 +19,8 @@ identitu i webové heslo. Soukromé SSH klíče se nikam nekopírují.
 2. Jako zařízení zvolte **Raspberry Pi 3** a vyberte správnou microSD kartu.
 3. V rozšířeném nastavení Imageru nastavte:
    - dočasný hostname, například `consolepi`;
-   - uživatele `consolepi` a dočasné silné heslo;
+   - uživatele `consolepi` a jedinečné dočasné silné heslo (nejde o heslo
+     distribuované generic image);
    - časové pásmo a klávesnici;
    - **Enable SSH** → **Allow public-key authentication only** a vložte svůj
      veřejný klíč;
@@ -28,12 +29,11 @@ identitu i webové heslo. Soukromé SSH klíče se nikam nekopírují.
 5. V DHCP serveru nebo skeneru sítě zjistěte IP adresu a přihlaste se:
 
    ```sh
-   ssh consolepi@IP_ADRESA_PI
+   ssh -i "$HOME/.ssh/consolepi-admin" consolepi@IP_ADRESA_PI
    ```
 
-Poznámka: Pokud zvolíte v Imageru přístup jen heslem, vytvořte před instalací
-na Pi soubor `~/.ssh/authorized_keys` se svým veřejným klíčem. ConsolePi jej
-potřebuje pro technický účet `console` používaný na portech 2201–2204.
+Přihlášení heslem nepoužívejte. ConsolePi vyžaduje veřejný klíč, který bootstrap
+převezme také pro technický účet `console` používaný na portech 2201–2204.
 
 ## 2. Vytvoření instalačního balíčku na Macu
 

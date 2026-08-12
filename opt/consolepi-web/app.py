@@ -639,6 +639,7 @@ def login():
 @APP.route("/setup", methods=["GET", "POST"])
 def setup():
     state = firstboot_status()
+    generic_firstboot = state.get("reason") == "generic_image"
     if request.method == "POST":
         if not state.get("pending"):
             return redirect(url_for("login"))
@@ -653,8 +654,18 @@ def setup():
         else:
             key_mode = request.form.get("admin_key_mode", "generate")
             public_key = request.form.get("admin_public_key", "").strip()
-            if key_mode not in {"existing", "generate"}:
+            if key_mode not in {"keep", "existing", "generate"}:
                 flash("Zvolte způsob vytvoření administrativního SSH přístupu.", "error")
+                return redirect(url_for("setup"))
+            if generic_firstboot and key_mode != "keep":
+                flash(
+                    "Při prvním spuštění generic image je z bezpečnostních důvodů "
+                    "nutné ponechat SSH klíč vložený Raspberry Pi Imagerem.",
+                    "error",
+                )
+                return redirect(url_for("setup"))
+            if key_mode == "keep" and not state.get("admin_key_present"):
+                flash("Stávající validní administrativní klíč není dostupný.", "error")
                 return redirect(url_for("setup"))
             if key_mode == "existing" and not public_key:
                 flash("Vložte veřejný SSH klíč nebo zvolte vytvoření nového klíče.", "error")
@@ -666,6 +677,7 @@ def setup():
                 "location": request.form.get("location", ""),
                 "description": request.form.get("description", ""),
                 "admin_public_key": public_key if key_mode == "existing" else "",
+                "key_mode": key_mode,
             }, timeout=120)
             if result.returncode:
                 flash(result.stderr.strip() or "Průvodce nelze dokončit.", "error")
@@ -698,6 +710,8 @@ def setup():
         network=network_status(),
         identity=identity,
         hostname=command("hostname").stdout.strip(),
+        generic_firstboot=generic_firstboot,
+        admin_key_present=bool(state.get("admin_key_present")),
     )
 
 
@@ -729,7 +743,9 @@ def setup_admin_key_generate():
         serialization.Encoding.OpenSSH,
         serialization.PublicFormat.OpenSSH,
     ).decode("ascii") + " consolepi-firstboot"
-    result = maintenance("firstboot", "admin-key-install", {"public_key": public_key})
+    result = maintenance("firstboot", "admin-key-install", {
+        "public_key": public_key,
+    })
     if result.returncode:
         flash(result.stderr.strip() or "Nelze uložit veřejný SSH klíč správce.", "error")
         return redirect(url_for("setup"))

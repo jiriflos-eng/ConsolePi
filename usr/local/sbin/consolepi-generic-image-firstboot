@@ -1,0 +1,114 @@
+#!/bin/sh
+# Complete a sanitised generic image after Raspberry Pi Imager has injected
+# the administrator's public key into the existing UID 1000 account.
+set -eu
+
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+export PATH
+umask 077
+
+STATE=/etc/consolepi/generic-image.json
+FIRSTBOOT=/etc/consolepi/firstboot.json
+ADMIN_USER=consolepi
+ADMIN_KEYS=/home/consolepi/.ssh/authorized_keys
+CONSOLE_KEYS=/home/console/.ssh/authorized_keys
+TLS_DIR=/etc/consolepi/tls
+IMAGER_FAILURE=/etc/consolepi/generic-imager-customization-failed
+IMAGER_SUCCESS=/etc/consolepi/generic-imager-customization-imported
+
+fail()
+{
+    logger -p authpriv.err -t consolepi-generic-firstboot -- "$*" || true
+    printf 'ConsolePi generic-image first boot: %s\n' "$*" >&2
+    exit 1
+}
+
+state=$(python3 - "$FIRSTBOOT" "$STATE" <<'PY'
+import sys
+sys.path.insert(0, "/usr/local/lib")
+from consolepi_firstboot_security import generic_state
+print(generic_state(sys.argv[1], sys.argv[2]))
+PY
+)
+case "$state" in
+    standard) exit 0 ;;
+    pending|claim_pending|complete) ;;
+    *) fail 'generic-image stav chybí nebo je poškozený' ;;
+esac
+if [ "$state" = pending ] && [ ! -e "$IMAGER_SUCCESS" ]; then
+    /usr/local/libexec/consolepi-imager-postvalidate ||
+        fail 'výsledek Raspberry Pi Imager customizace byl odmítnut'
+fi
+if ! python3 - "$IMAGER_FAILURE" "$IMAGER_SUCCESS" <<'PY'
+import sys
+sys.path.insert(0, "/usr/local/lib")
+from consolepi_imager_security import validate_imager_markers
+validate_imager_markers(sys.argv[1], sys.argv[2])
+PY
+then
+    fail 'Imager success/failure stav je chybějící, poškozený nebo odmítnutý'
+fi
+
+key=$(python3 - "$state" /etc/passwd /etc/shadow /home/consolepi <<'PY'
+import sys
+sys.path.insert(0, "/usr/local/lib")
+from consolepi_firstboot_security import validate_generic_access
+print(validate_generic_access(
+    sys.argv[1], open(sys.argv[2]).read(), open(sys.argv[3]).read(), sys.argv[4], 1000, 1000
+))
+PY
+) || fail 'účet consolepi, locked password nebo authorized_keys nesplňuje bezpečnostní invarianty'
+
+case "$state" in claim_pending|complete) unset key; exit 0 ;; esac
+
+install -d -o console -g console -m 0700 /home/console/.ssh
+tmp_console_key=$(mktemp /home/console/.ssh/.authorized_keys.XXXXXX)
+printf '%s\n' "$key" >"$tmp_console_key"
+chown console:console "$tmp_console_key"
+chmod 0600 "$tmp_console_key"
+mv -f "$tmp_console_key" "$CONSOLE_KEYS"
+chown console:console "$CONSOLE_KEYS"
+chmod 0600 "$CONSOLE_KEYS"
+unset key
+
+# The distributable image contains none of these private values. Generate a
+# fresh identity only after the administrator key has passed validation.
+python3 - <<'PY' || fail 'nelze bezpečně vytvořit a ověřit SSH host keys'
+import sys
+sys.path.insert(0, "/usr/local/lib")
+from consolepi_imager_security import provision_host_keys
+provision_host_keys()
+PY
+install -d -o root -g root -m 0755 "$TLS_DIR"
+tls_ip=$(hostname -I 2>/dev/null | awk '{print $1}')
+tls_san="DNS:$(hostname),DNS:$(hostname).local"
+[ -z "$tls_ip" ] || tls_san="$tls_san,IP:$tls_ip"
+openssl req -x509 -newkey rsa:2048 -sha256 -nodes -days 825 \
+    -subj "/CN=$(hostname)" -addext "subjectAltName=$tls_san" \
+    -keyout "$TLS_DIR/consolepi.key" -out "$TLS_DIR/consolepi.crt" >/dev/null 2>&1
+chmod 0600 "$TLS_DIR/consolepi.key"
+chmod 0644 "$TLS_DIR/consolepi.crt"
+python3 -c 'import secrets; print(secrets.token_hex(32))' >/etc/consolepi/web.secret
+chown root:consolepi-web /etc/consolepi/web.secret
+chmod 0640 /etc/consolepi/web.secret
+
+/usr/local/sbin/consolepi-control auth sync >/dev/null || fail 'nelze aktivovat klíčovou autentizaci konzolového účtu'
+
+# Rebuild the generic firewall from the Ethernet DHCP network instead of
+# carrying the master device's allow-list into a different deployment.
+attempt=0
+while ! ip -o -4 address show dev eth0 scope global 2>/dev/null | grep -q ' inet '; do
+    attempt=$((attempt + 1))
+    [ "$attempt" -lt 31 ] || fail 'ethernet DHCP adresa není dostupná pro bezpečné nastavení firewallu'
+    sleep 1
+done
+/usr/local/sbin/consolepi-control access migrate >/dev/null || fail 'nelze nastavit firewall pro aktuální ethernetovou síť'
+
+python3 - "$STATE" <<'PY'
+import sys
+sys.path.insert(0, "/usr/local/lib")
+from consolepi_firstboot_security import write_generic_state
+write_generic_state(sys.argv[1], "claim_pending")
+PY
+rm -f /etc/consolepi/generic-image-recovery.txt
+logger -p authpriv.notice -t consolepi 'GENERIC_IMAGE_FIRSTBOOT_COMPLETE key_type=ed25519'

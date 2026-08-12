@@ -1,0 +1,112 @@
+#!/usr/bin/python3
+"""Validate the completed Imager transaction and create its success marker."""
+import os
+import pwd
+import socket
+import stat
+import sys
+from pathlib import Path
+
+sys.path.insert(0, "/usr/local/lib")
+from consolepi_firstboot_security import unexpected_login_accounts, validate_generic_access
+from consolepi_imager_security import (
+    FAILURE_MARKER, SSH_OPERATION, SUCCESS_CONTENT, SUCCESS_MARKER,
+    USER_OPERATION, USER_OPERATION_CONTENT, ImagerImportError, _atomic_write,
+    _lexists, ensure_transaction_open, generic_pending, mark_failure_once, read_strict_marker,
+    restore_vendor_entrypoint, validate_ed25519_key, validate_optional_marker,
+)
+
+
+def fail(message):
+    try:
+        mark_failure_once(FAILURE_MARKER, message)
+    finally:
+        raise ImagerImportError(message)
+
+
+def main():
+    try:
+        if os.geteuid() != 0 or not generic_pending():
+            fail("post-Imager validation requires the generic pending state")
+        ensure_transaction_open(FAILURE_MARKER, SUCCESS_MARKER)
+        boot_config = Path("/etc/consolepi/imager-boot-mount")
+        boot_mount = Path(read_strict_marker(boot_config).decode().strip())
+        if not str(boot_mount).startswith("/boot/") or boot_mount.is_symlink() or not boot_mount.is_dir():
+            fail("firmware mount configuration is invalid")
+        if _lexists(boot_mount / "firstrun.sh"):
+            fail("Imager firstrun payload remains on FAT")
+        cmdline = boot_mount / "cmdline.txt"
+        info = cmdline.lstat()
+        if not stat.S_ISREG(info.st_mode) or stat.S_ISLNK(info.st_mode) or info.st_nlink != 1:
+            fail("active cmdline.txt is unsafe")
+        cmdline_text = cmdline.read_text()
+        denied = ("systemd.run=", "systemd.run_success_action=", "systemd.run_failure_action=",
+                  "systemd.unit=kernel-command-line.target", "ds=nocloud")
+        if len(cmdline_text.splitlines()) != 1 or any(item in cmdline_text for item in denied):
+            fail("Imager boot parameters were not safely removed")
+        account = pwd.getpwnam("consolepi")
+        if account.pw_shell != "/bin/bash":
+            fail("consolepi shell changed")
+        key = validate_generic_access(
+            "pending", Path("/etc/passwd").read_text(), Path("/etc/shadow").read_text(),
+            account.pw_dir, 1000, 1000,
+        )
+        if unexpected_login_accounts(Path("/etc/passwd").read_text()):
+            fail("an unexpected login-capable account exists")
+        recorded_key = read_strict_marker(SSH_OPERATION).decode()
+        if recorded_key != key + "\n" or validate_ed25519_key(key) != key:
+            fail("authorized key does not match the guarded Imager operation")
+        validate_optional_marker(USER_OPERATION, USER_OPERATION_CONTENT)
+        if socket.gethostname() != "consolepi":
+            fail("hostname customization is not permitted")
+        for connect_state in ("/var/lib/rpi-connect", "/root/.config/rpi-connect",
+                              "/home/consolepi/.config/rpi-connect"):
+            if Path(connect_state).exists() or Path(connect_state).is_symlink():
+                fail("Raspberry Pi Connect customization is not permitted")
+        profiles = Path("/etc/NetworkManager/system-connections")
+        entries = list(profiles.iterdir())
+        if len(entries) != 1 or entries[0].name != "Wired connection 1.nmconnection":
+            fail("network customization is not permitted")
+        profile_info = entries[0].lstat()
+        if (not stat.S_ISREG(profile_info.st_mode) or stat.S_ISLNK(profile_info.st_mode) or
+                profile_info.st_uid != 0 or profile_info.st_gid != 0 or
+                profile_info.st_nlink != 1 or stat.S_IMODE(profile_info.st_mode) != 0o600):
+            fail("generic Ethernet profile metadata is unsafe")
+        profile = entries[0].read_text()
+        if ("type=ethernet\n" not in profile or "interface-name=eth0\n" not in profile or
+                profile.count("method=auto\n") != 2 or any(item in profile.lower() for item in
+                ("wifi", "wireless", "psk=", "password=", "private-key"))):
+            fail("generic Ethernet profile was modified")
+        machine_id_path = Path("/etc/machine-id")
+        machine_info = machine_id_path.lstat()
+        machine_id = machine_id_path.read_text()
+        if (not stat.S_ISREG(machine_info.st_mode) or stat.S_ISLNK(machine_info.st_mode) or
+                machine_info.st_uid != 0 or machine_info.st_gid != 0 or
+                machine_info.st_nlink != 1 or stat.S_IMODE(machine_info.st_mode) != 0o444 or
+                not machine_id.endswith("\n") or len(machine_id.strip()) != 32 or
+                machine_id.strip() == "0" * 32):
+            fail("machine-id was not regenerated")
+        int(machine_id.strip(), 16)
+        restore_vendor_entrypoint(
+            "/usr/lib/raspberrypi-sys-mods/imager_custom",
+            "/usr/lib/raspberrypi-sys-mods/imager_custom.consolepi-vendor",
+            "/usr/local/libexec/consolepi-imager-custom-guard",
+        )
+        restore_vendor_entrypoint(
+            "/usr/lib/userconf-pi/userconf",
+            "/usr/lib/userconf-pi/userconf.consolepi-vendor",
+            "/usr/local/libexec/consolepi-imager-userconf-guard",
+        )
+        _atomic_write(SUCCESS_MARKER, SUCCESS_CONTENT, 0o600)
+    except Exception as exc:
+        if not _lexists(FAILURE_MARKER):
+            try:
+                mark_failure_once(FAILURE_MARKER, str(exc))
+            except Exception:
+                pass
+        print(f"ConsolePi post-Imager validation failed: {exc}", file=sys.stderr)
+        raise SystemExit(1)
+
+
+if __name__ == "__main__":
+    main()

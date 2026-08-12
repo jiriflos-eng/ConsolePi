@@ -14,6 +14,10 @@ import tarfile
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
+sys.path.insert(0, "/usr/local/lib")
+from consolepi_firstboot_security import (
+    claim_required, firstboot_reason, generic_state, write_generic_state,
+)
 
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
@@ -22,6 +26,7 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
 IDENTITY = Path("/etc/consolepi/identity.json")
 FIRSTBOOT = Path("/etc/consolepi/firstboot.json")
+GENERIC_IMAGE = Path("/etc/consolepi/generic-image.json")
 HOSTS = Path("/etc/hosts")
 TLS_DIR = Path("/etc/consolepi/tls")
 TLS_CERT = TLS_DIR / "consolepi.crt"
@@ -124,12 +129,22 @@ def firstboot_pending():
 
 def firstboot_status():
     pending, reason, current_card = firstboot_pending()
+    generic_claim_required = claim_required(FIRSTBOOT, GENERIC_IMAGE)
+    admin_key_present = False
+    try:
+        validate_admin_public_key(ADMIN_AUTHORIZED_KEYS.read_text())
+        admin_key_present = True
+    except (OSError, ValueError):
+        pass
     print(json.dumps({
         "pending": pending,
         "reason": reason,
         "card_detected": bool(current_card),
         "hostname": socket.gethostname(),
+        "generic_claim_required": generic_claim_required,
+        "admin_key_present": admin_key_present,
     }))
+
 
 
 def derive_key(passphrase, salt):
@@ -446,6 +461,10 @@ def tls_generate():
         value for value in run("hostname", "-I").stdout.split()
         if re.fullmatch(r"[0-9a-fA-F:.]+", value)
     ]
+    TLS_DIR.mkdir(parents=True, exist_ok=True)
+    candidate_dir = Path(tempfile.mkdtemp(prefix=".tls-candidate-", dir=TLS_DIR))
+    candidate_key = candidate_dir / "consolepi.key"
+    candidate_cert = candidate_dir / "consolepi.crt"
     config = tempfile.NamedTemporaryFile("w", delete=False)
     try:
         config.write("[req]\ndistinguished_name=dn\nx509_extensions=ext\nprompt=no\n")
@@ -457,16 +476,77 @@ def tls_generate():
         result = run(
             "openssl", "req", "-x509", "-newkey", "rsa:3072", "-sha256",
             "-nodes", "-days", "825", "-config", config.name,
-            "-keyout", str(TLS_KEY), "-out", str(TLS_CERT), timeout=60,
+            "-keyout", str(candidate_key), "-out", str(candidate_cert), timeout=60,
         )
         if result.returncode:
             raise ValueError(result.stderr.strip())
-        os.chmod(TLS_KEY, 0o600)
-        os.chmod(TLS_CERT, 0o644)
+        cert = candidate_cert.read_bytes()
+        key = candidate_key.read_bytes()
+        certificate = x509.load_pem_x509_certificate(cert)
+        private_key = serialization.load_pem_private_key(key, password=None)
+        if certificate.public_key().public_bytes(
+            serialization.Encoding.DER,
+            serialization.PublicFormat.SubjectPublicKeyInfo,
+        ) != private_key.public_key().public_bytes(
+            serialization.Encoding.DER,
+            serialization.PublicFormat.SubjectPublicKeyInfo,
+        ):
+            raise ValueError("Nový TLS certifikát a klíč k sobě nepatří.")
+        previous_cert = TLS_CERT.read_bytes() if TLS_CERT.exists() else None
+        previous_key = TLS_KEY.read_bytes() if TLS_KEY.exists() else None
+        atomic(TLS_CERT, cert, 0o644)
+        atomic(TLS_KEY, key, 0o600)
+        check = run("nginx", "-t")
+        if check.returncode:
+            if previous_cert is not None:
+                atomic(TLS_CERT, previous_cert, 0o644)
+            if previous_key is not None:
+                atomic(TLS_KEY, previous_key, 0o600)
+            raise ValueError(check.stderr.strip() or "Nová TLS konfigurace není platná.")
         run("systemctl", "reload", "nginx")
     finally:
         Path(config.name).unlink(missing_ok=True)
+        shutil.rmtree(candidate_dir, ignore_errors=True)
     tls_status()
+
+
+def regenerate_ssh_host_keys():
+    root = Path(tempfile.mkdtemp(prefix=".hostkey-candidate-", dir="/etc/ssh"))
+    candidate_dir = root / "etc/ssh"
+    candidate_dir.mkdir(parents=True)
+    backup = Path(tempfile.mkdtemp(prefix=".hostkey-backup-", dir="/etc/ssh"))
+    installed = []
+    try:
+        result = run("ssh-keygen", "-A", "-f", str(root))
+        if result.returncode:
+            raise ValueError(result.stderr.strip() or "Nelze vytvořit SSH host klíče.")
+        private_keys = sorted(candidate_dir.glob("ssh_host_*_key"))
+        if not private_keys or not all(
+            key.is_file() and (key.with_name(key.name + ".pub")).is_file()
+            and (key.stat().st_mode & 0o777) == 0o600
+            for key in private_keys
+        ):
+            raise ValueError("Nová sada SSH host klíčů není úplná nebo bezpečná.")
+        old_keys = list(Path("/etc/ssh").glob("ssh_host_*"))
+        for old in old_keys:
+            os.replace(old, backup / old.name)
+        try:
+            for source in candidate_dir.glob("ssh_host_*"):
+                destination = Path("/etc/ssh") / source.name
+                os.replace(source, destination)
+                installed.append(destination)
+            check = run("sshd", "-t")
+            if check.returncode:
+                raise ValueError(check.stderr.strip() or "Nové SSH host klíče neprošly kontrolou.")
+        except Exception:
+            for path in installed:
+                path.unlink(missing_ok=True)
+            for old in backup.glob("ssh_host_*"):
+                os.replace(old, Path("/etc/ssh") / old.name)
+            raise
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+        shutil.rmtree(backup, ignore_errors=True)
 
 
 def audit_status():
@@ -557,7 +637,12 @@ def install_admin_public_key(value):
 
 
 def firstboot_admin_key_install():
-    line = install_admin_public_key(payload().get("public_key", ""))
+    values = payload()
+    if firstboot_reason(FIRSTBOOT) == "generic_image":
+        raise ValueError(
+            "Generic image používá administrativní klíč vložený Raspberry Pi Imagerem."
+        )
+    line = install_admin_public_key(values.get("public_key", ""))
     run(
         "logger", "-p", "authpriv.notice", "-t", "consolepi",
         "FIRSTBOOT_ADMIN_KEY_INSTALLED type=ed25519",
@@ -567,6 +652,12 @@ def firstboot_admin_key_install():
 
 def firstboot_configure():
     values = payload()
+    if firstboot_reason(FIRSTBOOT) == "generic_image":
+        generic = generic_state(FIRSTBOOT, GENERIC_IMAGE)
+        if generic != "claim_pending":
+            raise ValueError("Generic-image stav nepovoluje tuto operaci.")
+    else:
+        generic = "standard"
     password_hash = str(values.get("web_password_hash", "")).strip()
     if not password_hash.startswith(("scrypt:", "pbkdf2:")) or len(password_hash) > 1024:
         raise ValueError("Neplatné heslo webové administrace.")
@@ -593,12 +684,7 @@ def firstboot_configure():
     if public_key:
         install_admin_public_key(public_key)
 
-    # A clone must never retain the source device's host identity.
-    for path in Path("/etc/ssh").glob("ssh_host_*"):
-        path.unlink()
-    result = run("ssh-keygen", "-A")
-    if result.returncode:
-        raise ValueError(result.stderr.strip() or "Nelze vytvořit SSH host klíče.")
+    regenerate_ssh_host_keys()
     saved_stdin = sys.stdin
     sys.stdin = io.StringIO(json.dumps({"confirmation": "NOVY"}))
     try:
@@ -607,11 +693,16 @@ def firstboot_configure():
         sys.stdin = saved_stdin
     run("systemctl", "restart", "ssh")
 
-    write_firstboot({
+    completed_state = {
         "state": "complete",
         "card_id": card_id(),
         "completed_at": datetime.now(timezone.utc).isoformat(),
-    })
+    }
+    if generic != "standard":
+        completed_state["reason"] = "generic_image"
+    write_firstboot(completed_state)
+    if generic != "standard":
+        write_generic_state(GENERIC_IMAGE, "complete")
     run(
         "logger", "-p", "authpriv.notice", "-t", "consolepi",
         f"FIRSTBOOT_COMPLETE hostname={socket.gethostname()}",

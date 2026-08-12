@@ -1,4 +1,4 @@
-# ConsolePi 1.5.2 · Test plynulé aktualizace
+# ConsolePi 1.6.0 · Test plynulé aktualizace
 
 - Testovací vydání ověřuje bezvarovné rozbalení aktualizace ve verzi 1.5.1 a novější.
 - Nemění síť, firewall, sériové porty, uživatele, klíče ani logy.

@@ -1,0 +1,12 @@
+[Unit]
+Description=ConsolePi generic image first-boot provisioning
+After=local-fs.target
+Before=ssh.service nginx.service consolepi-web.service consolepi-port-monitor.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/consolepi-generic-image-firstboot
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
