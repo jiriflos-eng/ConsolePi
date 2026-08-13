@@ -87,6 +87,7 @@ def test_generic_update_and_validation_report(root):
     firstboot_script = (ROOT / "usr/local/sbin/consolepi-generic-image-firstboot").read_text()
     sanitizer = (ROOT / "usr/local/sbin/consolepi-prepare-generic-image").read_text()
     validator = (ROOT / "usr/local/sbin/consolepi-validate-generic-image").read_text()
+    dispatcher = (ROOT / "etc/NetworkManager/dispatcher.d/90-consolepi-firewall").read_text()
     assert 'GENERIC_WEB_SETUP_PENDING=no' in installer
     assert '[ "$UPDATE_MODE" = yes ]' in installer
     assert 'generic_web_setup_pending(' in installer
@@ -136,6 +137,11 @@ def test_generic_update_and_validation_report(root):
     assert "check console_ports_unassigned" in validator
     assert "check serial_defaults" in validator
     assert validator.count("/dev/consolepi/unassigned-") == 4
+    assert '[ "$1" = eth0 ]' in dispatcher
+    assert "up|dhcp4-change|reapply" in dispatcher
+    assert "flock -n 9" in dispatcher
+    assert "/usr/local/sbin/consolepi-control access migrate" in dispatcher
+    assert "0.0.0.0/0" not in dispatcher
 
 
 

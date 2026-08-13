@@ -124,6 +124,7 @@ backup_if_exists()
 
 install -d -m 0755 /etc/consolepi /etc/ssh/sshd_config.d /etc/profile.d /usr/local/sbin /usr/local/lib /usr/local/libexec /usr/share/consolepi
 install -d -m 0755 /etc/udev/rules.d /etc/tmpfiles.d /etc/logrotate.d
+install -d -m 0755 /etc/NetworkManager/dispatcher.d
 install -d -m 0755 /etc/systemd/system /etc/nginx/sites-available /etc/sudoers.d
 install -d -m 0755 /etc/consolepi/tls
 
@@ -167,6 +168,7 @@ for target in \
     /etc/profile.d/consolepi-status.sh \
     /etc/tmpfiles.d/consolepi.conf \
     /etc/logrotate.d/consolepi \
+    /etc/NetworkManager/dispatcher.d/90-consolepi-firewall \
     /etc/systemd/system/consolepi-web.service \
     /etc/systemd/system/consolepi-port-monitor.service \
     /etc/systemd/system/consolepi-update-check.service \
@@ -277,6 +279,8 @@ install -d -m 0755 /usr/share/snmp/mibs
 install -m 0644 "$ROOT/usr/share/snmp/mibs/CONSOLEPI-MIB.txt" /usr/share/snmp/mibs/CONSOLEPI-MIB.txt
 install -m 0644 "$ROOT/etc/tmpfiles.d/consolepi.conf" /etc/tmpfiles.d/consolepi.conf
 install -m 0644 "$ROOT/etc/logrotate.d/consolepi" /etc/logrotate.d/consolepi
+install -m 0755 "$ROOT/etc/NetworkManager/dispatcher.d/90-consolepi-firewall" \
+    /etc/NetworkManager/dispatcher.d/90-consolepi-firewall
 install -m 0644 "$ROOT/etc/systemd/system/consolepi-web.service" /etc/systemd/system/consolepi-web.service
 install -m 0644 "$ROOT/etc/systemd/system/consolepi-port-monitor.service" /etc/systemd/system/consolepi-port-monitor.service
 install -m 0644 "$ROOT/etc/systemd/system/consolepi-update-check.service" /etc/systemd/system/consolepi-update-check.service
