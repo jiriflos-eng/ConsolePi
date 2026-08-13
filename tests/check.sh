@@ -27,6 +27,7 @@ for file in \
     "$ROOT/usr/local/sbin/consolepi-validate-generic-image" \
     "$ROOT/usr/local/libexec/consolepi-imager-custom-guard" \
     "$ROOT/usr/local/libexec/consolepi-imager-userconf-guard" \
+    "$ROOT/etc/NetworkManager/dispatcher.d/90-consolepi-firewall" \
     "$ROOT/etc/profile.d/consolepi-status.sh" \
     "$ROOT/bootstrap-install.sh" \
     "$ROOT/tools/build-install-bundle.sh" \
@@ -34,6 +35,16 @@ for file in \
 do
     if sh -n "$file"; then ok "shell syntax $file"; else bad "shell syntax $file"; fi
 done
+
+dispatcher="$ROOT/etc/NetworkManager/dispatcher.d/90-consolepi-firewall"
+grep -q '\[ "$1" = eth0 \]' "$dispatcher" &&
+    grep -q 'up|dhcp4-change|reapply' "$dispatcher" &&
+    grep -q 'flock -n 9' "$dispatcher" &&
+    grep -q '/usr/local/sbin/consolepi-control access migrate' "$dispatcher" &&
+    ! grep -q '0\.0\.0\.0/0' "$dispatcher" &&
+    grep -q '90-consolepi-firewall' "$ROOT/install.sh" &&
+    ok "NetworkManager DHCP firewall synchronization" ||
+    bad "NetworkManager DHCP firewall synchronization missing"
 
 grep -q 'xattr -cr "$STAGING"' "$ROOT/tools/build-install-bundle.sh" &&
     grep -q 'tar --no-xattrs -C "$STAGING"' "$ROOT/tools/build-install-bundle.sh" &&

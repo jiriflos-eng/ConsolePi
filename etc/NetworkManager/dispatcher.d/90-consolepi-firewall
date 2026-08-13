@@ -1,0 +1,32 @@
+#!/bin/sh
+# Keep the management allow-list aligned with eth0 after DHCP/network changes.
+set -eu
+
+PATH=/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin
+export PATH
+LC_ALL=C
+export LC_ALL
+
+[ "$#" -eq 2 ] || exit 0
+[ "$1" = eth0 ] || exit 0
+case "$2" in
+    up|dhcp4-change|reapply) ;;
+    *) exit 0 ;;
+esac
+
+# NetworkManager may emit closely spaced events for the same lease. Only one
+# migration may build and replace the nftables configuration at a time.
+exec 9>/run/lock/consolepi-firewall-migrate.lock
+flock -n 9 || exit 0
+
+if /usr/local/sbin/consolepi-control access migrate; then
+    logger -p authpriv.notice -t consolepi \
+        "FIREWALL_DHCP_SYNC interface=eth0 event=$2 result=success"
+    exit 0
+fi
+
+# consolepi-control validates the candidate before applying it, so failure
+# leaves the previous ruleset in place (fail closed).
+logger -p authpriv.err -t consolepi \
+    "FIREWALL_DHCP_SYNC interface=eth0 event=$2 result=failed"
+exit 1
