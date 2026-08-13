@@ -2,6 +2,7 @@
 import json
 import os
 import pathlib
+import re
 import stat
 import subprocess
 import sys
@@ -108,6 +109,33 @@ def test_generic_update_and_validation_report(root):
     assert validator.index("check ssh_syntax validate_sshd_without_installed_host_keys") < validator.index(
         "check ssh_host_keys_still_absent")
     assert 'rm -f "$ssh_check_dir/ssh_host_ed25519_key"' in validator
+    expected_ports = (
+        "# SSH_PORT|DEVICE_NAME|SERIAL_DEVICE\n"
+        "2201|KONZOLE-1|/dev/consolepi/unassigned-1\n"
+        "2202|KONZOLE-2|/dev/consolepi/unassigned-2\n"
+        "2203|KONZOLE-3|/dev/consolepi/unassigned-3\n"
+        "2204|KONZOLE-4|/dev/consolepi/unassigned-4\n"
+    )
+    expected_serial = (
+        "# SSH_PORT|BAUD|DATABITS|PARITY|STOPBITS|FLOW|LOCAL_ECHO\n"
+        "2201|9600|8|none|1|none|no\n"
+        "2202|9600|8|none|1|none|no\n"
+        "2203|9600|8|none|1|none|no\n"
+        "2204|9600|8|none|1|none|no\n"
+    )
+    for name, expected in (("ports.conf", expected_ports), ("serial.conf", expected_serial)):
+        match = re.search(
+            rf'''cat >"\$prep_dir/{re.escape(name)}" <<'EOF'\n(.*?)\nEOF''',
+            sanitizer,
+            re.DOTALL,
+        )
+        assert match and match.group(1) + "\n" == expected
+    reset_start = sanitizer.index("for name in ports.conf serial.conf; do")
+    assert sanitizer.index('install -o root -g root -m 0644 "$prep_dir/$name"', reset_start) > reset_start
+    assert sanitizer.index('mv -f "$STATE_DIR/.$name.new" "$STATE_DIR/$name"', reset_start) > reset_start
+    assert "check console_ports_unassigned" in validator
+    assert "check serial_defaults" in validator
+    assert validator.count("/dev/consolepi/unassigned-") == 4
 
 
 

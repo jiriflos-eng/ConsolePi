@@ -181,6 +181,20 @@ printf '%s\n' '{}' >"$prep_dir/labels.json"
 printf '%s\n' 'AUTH_MODE=local_key' >"$prep_dir/auth.conf"
 printf '%s\n' '{"state":"pending","reason":"generic_image"}' >"$prep_dir/generic-image.json"
 printf '%s\n' '{"state":"pending","reason":"generic_image"}' >"$prep_dir/firstboot.json"
+cat >"$prep_dir/ports.conf" <<'EOF'
+# SSH_PORT|DEVICE_NAME|SERIAL_DEVICE
+2201|KONZOLE-1|/dev/consolepi/unassigned-1
+2202|KONZOLE-2|/dev/consolepi/unassigned-2
+2203|KONZOLE-3|/dev/consolepi/unassigned-3
+2204|KONZOLE-4|/dev/consolepi/unassigned-4
+EOF
+cat >"$prep_dir/serial.conf" <<'EOF'
+# SSH_PORT|BAUD|DATABITS|PARITY|STOPBITS|FLOW|LOCAL_ECHO
+2201|9600|8|none|1|none|no
+2202|9600|8|none|1|none|no
+2203|9600|8|none|1|none|no
+2204|9600|8|none|1|none|no
+EOF
 cat >"$prep_dir/wired-generic.nmconnection" <<'EOF'
 [connection]
 id=Wired connection 1
@@ -302,6 +316,13 @@ find /etc/ppp/peers -mindepth 1 -delete 2>/dev/null || true
 find /var/lib/dhcp /var/lib/NetworkManager -type f -delete 2>/dev/null || true
 hostnamectl set-hostname consolepi
 find /var/lib/consolepi-web -mindepth 1 -delete 2>/dev/null || true
+
+# A generic master must not retain a specific USB adapter assignment or
+# device-specific serial settings from the system used to prepare it.
+for name in ports.conf serial.conf; do
+    install -o root -g root -m 0644 "$prep_dir/$name" "$STATE_DIR/.$name.new"
+    mv -f "$STATE_DIR/.$name.new" "$STATE_DIR/$name"
+done
 python3 - "$boot_mount" <<'PY'
 import sys
 sys.path.insert(0, "/usr/local/lib")
