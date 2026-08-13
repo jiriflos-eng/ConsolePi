@@ -129,6 +129,8 @@ check snmp_runtime_absent sh -c 'test ! -e /var/lib/snmp/snmpd.conf && test ! -L
 check apt_proxy_absent sh -c 'test ! -e /etc/apt/apt.conf.d/90consolepi-proxy && test ! -L /etc/apt/apt.conf.d/90consolepi-proxy'
 check one_ethernet_profile sh -c 'test "$(find /etc/NetworkManager/system-connections -mindepth 1 -maxdepth 1 -type f | wc -l)" -eq 1'
 check ethernet_credentials_absent sh -c '! grep -Eiq "(^|[-_])(psk|password|secret|private-key)[[:space:]]*=" /etc/NetworkManager/system-connections/*'
+check console_ports_unassigned python3 -c 'from pathlib import Path; expected=b"# SSH_PORT|DEVICE_NAME|SERIAL_DEVICE\n2201|KONZOLE-1|/dev/consolepi/unassigned-1\n2202|KONZOLE-2|/dev/consolepi/unassigned-2\n2203|KONZOLE-3|/dev/consolepi/unassigned-3\n2204|KONZOLE-4|/dev/consolepi/unassigned-4\n"; raise SystemExit(Path("/etc/consolepi/ports.conf").read_bytes() != expected)'
+check serial_defaults python3 -c 'from pathlib import Path; expected=b"# SSH_PORT|BAUD|DATABITS|PARITY|STOPBITS|FLOW|LOCAL_ECHO\n2201|9600|8|none|1|none|no\n2202|9600|8|none|1|none|no\n2203|9600|8|none|1|none|no\n2204|9600|8|none|1|none|no\n"; raise SystemExit(Path("/etc/consolepi/serial.conf").read_bytes() != expected)'
 
 boot_mount=$(cat "$STATE_DIR/imager-boot-mount") || fail boot_mount_state
 case "$boot_mount" in /boot/*) ;; *) fail boot_mount_state ;; esac
