@@ -1,19 +1,13 @@
 #!/usr/bin/python3
-"""Fail-closed generic-image claim state and one-time credentials."""
-import hashlib
-import hmac
+"""Fail-closed generic-image claim state and access validation."""
 import json
 import os
 import secrets
 import stat
 import subprocess
-import time
-import fcntl
 from pathlib import Path
 
 KNOWN_GENERIC_STATES = {"pending", "claim_pending", "complete"}
-TOKEN_TTL = 600
-SESSION_TTL = 600
 
 
 class ClaimError(ValueError):
@@ -132,74 +126,6 @@ def write_generic_state(path, state):
     if state not in KNOWN_GENERIC_STATES:
         raise ClaimError("Neznámý generic-image stav.")
     atomic_write(path, json.dumps({"state": state}, separators=(",", ":")) + "\n")
-
-
-def create_token(token_path, metadata_path, now=None):
-    now = int(time.time() if now is None else now)
-    token = secrets.token_urlsafe(32)
-    atomic_write(token_path, token + "\n", 0o400)
-    atomic_write(metadata_path, json.dumps({
-        "version": 1,
-        "digest": hashlib.sha256(token.encode()).hexdigest(),
-        "created_at": now,
-        "expires_at": now + TOKEN_TTL,
-        "used": False,
-    }, separators=(",", ":")) + "\n")
-    return token
-
-
-def session_path(session_dir, session_id):
-    return Path(session_dir) / f"{hashlib.sha256(session_id.encode()).hexdigest()}.json"
-
-
-def consume_token(token, token_path, metadata_path, session_dir, now=None,
-                  expected_uid=0):
-    now = int(time.time() if now is None else now)
-    metadata_path = Path(metadata_path)
-    lock_path = metadata_path.with_suffix(metadata_path.suffix + ".lock")
-    lock_path.parent.mkdir(parents=True, exist_ok=True)
-    with lock_path.open("a+b") as lock:
-        os.chmod(lock_path, 0o600)
-        fcntl.flock(lock, fcntl.LOCK_EX)
-        try:
-            metadata = _read_secure_state(metadata_path, expected_uid)
-        except (OSError, json.JSONDecodeError, ClaimError) as exc:
-            raise ClaimError("Autorizační token není dostupný.") from exc
-        if (set(metadata) != {"version", "digest", "created_at", "expires_at", "used"} or
-                metadata["version"] != 1 or metadata["used"] is not False):
-            raise ClaimError("Autorizační token má neplatný nebo použitý stav.")
-        if not isinstance(metadata["expires_at"], int) or now > metadata["expires_at"]:
-            raise ClaimError("Autorizační token vypršel.")
-        digest = hashlib.sha256(str(token).encode()).hexdigest()
-        if not hmac.compare_digest(metadata["digest"], digest):
-            raise ClaimError("Autorizační token není platný.")
-        metadata["used"] = True
-        metadata["used_at"] = now
-        atomic_write(metadata_path, json.dumps(metadata, separators=(",", ":")) + "\n")
-        Path(token_path).unlink(missing_ok=True)
-        directory = Path(session_dir)
-        directory.mkdir(parents=True, exist_ok=True, mode=0o700)
-        os.chmod(directory, 0o700)
-        session_id = secrets.token_urlsafe(32)
-        atomic_write(session_path(directory, session_id), json.dumps({
-            "version": 1, "created_at": now, "expires_at": now + SESSION_TTL,
-        }, separators=(",", ":")) + "\n")
-        return session_id
-
-
-def validate_session(session_id, session_dir, now=None, expected_uid=0):
-    now = int(time.time() if now is None else now)
-    if not isinstance(session_id, str) or len(session_id) < 32:
-        raise ClaimError("Provisioning session není platná.")
-    value = _read_secure_state(session_path(session_dir, session_id), expected_uid)
-    if (set(value) != {"version", "created_at", "expires_at"} or value["version"] != 1 or
-            not isinstance(value["expires_at"], int) or now > value["expires_at"]):
-        raise ClaimError("Provisioning session je neplatná nebo vypršela.")
-    return True
-
-
-def consume_session(session_id, session_dir):
-    session_path(session_dir, session_id).unlink(missing_ok=True)
 
 
 

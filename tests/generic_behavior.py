@@ -39,35 +39,7 @@ def test_states(root):
     assert not security.claim_required(firstboot, generic)
 
 
-def test_claim_token(root):
-    uid = os.getuid()
-    token_path = root / "token"
-    metadata = root / "metadata.json"
-    sessions = root / "sessions"
-    token = security.create_token(token_path, metadata, now=100)
-    assert len(token) >= 32
-    assert stat.S_IMODE(token_path.stat().st_mode) == 0o400
-    assert token not in metadata.read_text()
-    expect_failure(
-        security.consume_token, "wrong-token", token_path, metadata, sessions, 101, uid
-    )
-    session_id = security.consume_token(
-        token, token_path, metadata, sessions, now=101, expected_uid=uid
-    )
-    assert not token_path.exists()
-    assert security.validate_session(session_id, sessions, now=102, expected_uid=uid)
-    expect_failure(
-        security.consume_token, token, token_path, metadata, sessions, 102, uid
-    )
-    expect_failure(security.validate_session, session_id, sessions, 702, uid)
-    security.consume_session(session_id, sessions)
-    expect_failure(security.validate_session, session_id, sessions, 103, uid)
-
-    expired_token = security.create_token(token_path, metadata, now=200)
-    expect_failure(
-        security.consume_token, expired_token, token_path, metadata, sessions, 801, uid
-    )
-
+def test_generic_bootstrap_firewall(root):
     control = (ROOT / "usr/local/sbin/consolepi-control").read_text()
     public_rule = 'ip saddr 0.0.0.0/0 tcp dport { 22, 80, 443 } ct state new accept'
     tree = ast.parse(control)
@@ -715,7 +687,7 @@ def main():
     with tempfile.TemporaryDirectory() as directory:
         root = pathlib.Path(directory)
         state_root = root / "states"; state_root.mkdir(); test_states(state_root)
-        token_root = root / "claim-token"; token_root.mkdir(); test_claim_token(token_root)
+        firewall_root = root / "bootstrap-firewall"; firewall_root.mkdir(); test_generic_bootstrap_firewall(firewall_root)
         update_root = root / "update"; update_root.mkdir(); test_generic_update_and_validation_report(update_root)
         key_root = root / "keys"; key_root.mkdir(); test_keys(key_root)
         imager_root = root / "imager"; imager_root.mkdir(); test_imager_key_and_firstrun(imager_root)

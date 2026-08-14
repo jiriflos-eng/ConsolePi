@@ -268,8 +268,6 @@ fi
 destructive=yes
 install -m 0600 "$prep_dir/recovery.txt" "$RECOVERY"
 rm -f "$STATE_DIR/generic-image-validation.json"
-rm -f "$STATE_DIR/firstboot-claim.json" "$STATE_DIR/firstboot-claim.json.lock" \
-    /home/consolepi/.consolepi-firstboot-token
 systemctl disable --now ssh nginx consolepi-web consolepi-port-monitor \
     consolepi-update-check.timer snmpd lldpd >/dev/null 2>&1 || true
 # Generic firstboot owns host-key creation. Prevent the vendor first-boot unit

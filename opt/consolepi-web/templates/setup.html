@@ -11,17 +11,6 @@
     <div class="notice {{ category }}">{{ message }}</div>
   {% endfor %}
 
-  {% if ownership_required %}
-  <form method="post" class="setup-form">
-    <input type="hidden" name="csrf" value="{{ csrf }}">
-    <section class="setup-card">
-      <span class="setup-step">1</span>
-      <div><h2>Ověření správce</h2><p>Nejprve se přihlaste klíčem z Raspberry Pi Imageru: <code>ssh -i "$HOME/.ssh/consolepi-admin" consolepi@ADRESA</code>. Jednorázový kód zobrazí příkaz <code>cat ~/.consolepi-firstboot-token</code>. Platí 10 minut.</p></div>
-      <label>Jednorázový kód<input type="password" name="ownership_token" autocomplete="one-time-code" required maxlength="128"></label>
-    </section>
-    <button type="submit">Ověřit správce</button>
-  </form>
-  {% else %}
   <form method="post" class="setup-form">
     <input type="hidden" name="csrf" value="{{ csrf }}">
     <section class="setup-card">
@@ -76,6 +65,5 @@
     </section>
     <button type="submit">Dokončit základní nastavení</button>
   </form>
-  {% endif %}
 </section>
 {% endblock %}

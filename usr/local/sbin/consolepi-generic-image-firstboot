@@ -16,8 +16,6 @@ TLS_DIR=/etc/consolepi/tls
 IMAGER_FAILURE=/etc/consolepi/generic-imager-customization-failed
 IMAGER_SUCCESS=/etc/consolepi/generic-imager-customization-imported
 VALIDATION_REPORT=/etc/consolepi/generic-image-validation.json
-CLAIM_TOKEN=/home/consolepi/.consolepi-firstboot-token
-CLAIM_METADATA=/etc/consolepi/firstboot-claim.json
 
 fail()
 {
@@ -74,19 +72,6 @@ PY
 ) || fail 'účet consolepi, locked password nebo authorized_keys nesplňuje bezpečnostní invarianty'
 
 if [ "$state" = claim_pending ]; then
-    # A reboot safely rotates an expired/unconsumed token. The new value is
-    # still obtainable only through the already validated SSH key.
-    python3 - "$CLAIM_TOKEN" "$CLAIM_METADATA" <<'PY'
-import os
-import pwd
-import sys
-sys.path.insert(0, "/usr/local/lib")
-from consolepi_firstboot_security import create_token
-create_token(sys.argv[1], sys.argv[2])
-account = pwd.getpwnam("consolepi")
-os.chown(sys.argv[1], account.pw_uid, account.pw_gid)
-os.chmod(sys.argv[1], 0o400)
-PY
     attempt=0
     while ! ip -o -4 address show dev eth0 scope global 2>/dev/null | grep -q ' inet '; do
         attempt=$((attempt + 1))
@@ -132,20 +117,6 @@ chown root:consolepi-web /etc/consolepi/web.secret
 chmod 0640 /etc/consolepi/web.secret
 
 /usr/local/sbin/consolepi-control auth sync >/dev/null || fail 'nelze aktivovat klíčovou autentizaci konzolového účtu'
-
-# Per-device, short-lived claim secret. It can be read only after proving
-# possession of the administrator key over SSH.
-python3 - "$CLAIM_TOKEN" "$CLAIM_METADATA" <<'PY'
-import pwd
-import sys
-sys.path.insert(0, "/usr/local/lib")
-from consolepi_firstboot_security import create_token
-create_token(sys.argv[1], sys.argv[2])
-account = pwd.getpwnam("consolepi")
-import os
-os.chown(sys.argv[1], account.pw_uid, account.pw_gid)
-os.chmod(sys.argv[1], 0o400)
-PY
 
 # Rebuild the generic firewall from the Ethernet DHCP network instead of
 # carrying the master device's allow-list into a different deployment.

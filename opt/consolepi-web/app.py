@@ -653,29 +653,11 @@ def login():
 def setup():
     state = firstboot_status()
     generic_firstboot = state.get("reason") == "generic_image"
-    ownership_required = bool(state.get("generic_claim_required"))
     if request.method == "POST":
         if not state.get("pending"):
             return redirect(url_for("login"))
         if not setup_csrf_valid():
             return "Neplatný CSRF token.", 403
-        if ownership_required and not session.get("setup_provisioning_session"):
-            result = maintenance("firstboot", "ownership-verify", {
-                "token": request.form.get("ownership_token", "").strip(),
-            })
-            if result.returncode:
-                flash(result.stderr.strip() or "Vlastnictví SSH klíče nebylo ověřeno.", "error")
-            else:
-                try:
-                    session_id = json.loads(result.stdout)["session_id"]
-                except (json.JSONDecodeError, KeyError, TypeError):
-                    flash("Ověření nevrátilo platnou provisioning session.", "error")
-                    return redirect(url_for("setup"))
-                session.clear()
-                session["setup_provisioning_session"] = session_id
-                session["setup_csrf"] = secrets.token_urlsafe(32)
-                flash("Držení privátního SSH klíče bylo ověřeno.", "success")
-            return redirect(url_for("setup"))
         password = request.form.get("web_password", "")
         confirmation = request.form.get("web_password_confirmation", "")
         if password != confirmation:
@@ -709,7 +691,6 @@ def setup():
                 "description": request.form.get("description", ""),
                 "admin_public_key": public_key if key_mode == "existing" else "",
                 "key_mode": key_mode,
-                "provisioning_session": session.get("setup_provisioning_session", ""),
                 "management_network": request.form.get("management_network", ""),
                 "client_address": setup_client_address(),
             }, timeout=120)
@@ -745,7 +726,6 @@ def setup():
         identity=identity,
         hostname=command("hostname").stdout.strip(),
         generic_firstboot=generic_firstboot,
-        ownership_required=ownership_required and not session.get("setup_provisioning_session"),
         admin_key_present=bool(state.get("admin_key_present")),
     )
 
