@@ -58,7 +58,8 @@ pouze SSH s autentizací veřejným klíčem a vložte jeden klíč Ed25519. Ú�
 `consolepi` už image obsahuje a jeho systémové heslo je uzamčené.
 
 Zapište kartu, vložte ji do Raspberry Pi a připojte Ethernet. IP adresu zjistíte v DHCP serveru nebo routeru.
-Generic first-boot průvodce vyžaduje povinnou IPv4 management síť.
+Generic first-boot průvodce vyžaduje alespoň jednu IPv4 management síť;
+více sítí lze oddělit čárkou nebo mezerou.
 Do dokončení jsou z IPv4 sítí dočasně otevřené pouze porty 22, 80 a 443; poté se
 přístup okamžitě omezí na zadaný allowlist. Podrobný postup je v
 `docs/INSTALACE-IMAGE-RPI-IMAGER.txt`.

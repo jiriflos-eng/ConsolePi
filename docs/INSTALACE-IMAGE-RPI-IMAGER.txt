@@ -65,8 +65,9 @@ chráněné management allowlistem.
 2. Prohlížeč upozorní na vlastní HTTPS certifikát. To je při prvním spuštění
    očekávané; pokračujte na stránku zařízení.
 
-3. Nastavte heslo webové administrace, identitu zařízení a povinnou IPv4
-   management síť v CIDR tvaru (např. `192.168.1.0/24`). Síť musí
+3. Nastavte heslo webové administrace, identitu zařízení a jednu nebo více
+   povinných IPv4 management sítí v CIDR tvaru (např. `192.168.1.0/24,
+   10.20.0.0/16`). Sítě oddělte čárkou nebo mezerou. Alespoň jedna musí
    obsahovat adresu počítače, ze kterého průvodce dokončujete; hodnota
    `0.0.0.0/0` není povolena.
 

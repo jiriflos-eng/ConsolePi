@@ -40,6 +40,7 @@ PROXY_CONFIG = Path("/etc/consolepi/proxy.json")
 APT_PROXY_CONFIG = Path("/etc/apt/apt.conf.d/90consolepi-proxy")
 LABELS_CONFIG = Path("/etc/consolepi/labels.json")
 FIRSTBOOT_CONFIG = Path("/etc/consolepi/firstboot.json")
+GENERIC_IMAGE_CONFIG = Path("/etc/consolepi/generic-image.json")
 IDENTITY_CONFIG = Path("/etc/consolepi/identity.json")
 HOSTS_CONFIG = Path("/etc/hosts")
 DISCOVERY_CONFIG = Path("/etc/consolepi/discovery.json")
@@ -280,7 +281,24 @@ def access_migrate():
     if not ACCESS_SOURCES_CONFIG.exists():
         write_access_sources([])
     _, local_network = active_network()
-    update_firewall(local_network)
+    # DHCP changes and update installs may run after generic first-boot has
+    # opened its temporary setup transports.  Preserve that access until the
+    # setup transaction explicitly finalizes it to a management allow-list.
+    sys.path.insert(0, "/usr/local/lib")
+    from consolepi_firstboot_security import (
+        ClaimError, firstboot_reason, generic_web_setup_pending,
+    )
+    bootstrap = False
+    if firstboot_reason(FIRSTBOOT_CONFIG) == "generic_image":
+        try:
+            bootstrap = generic_web_setup_pending(
+                FIRSTBOOT_CONFIG, GENERIC_IMAGE_CONFIG
+            )
+        except ClaimError:
+            # Do not leave public setup transports active for corrupt state.
+            update_firewall(local_network, generic_bootstrap=False)
+            raise
+    update_firewall(local_network, generic_bootstrap=bootstrap)
 
 
 def access_generic_bootstrap():
@@ -294,19 +312,21 @@ def access_generic_bootstrap():
     update_firewall(local_network, generic_bootstrap=True)
 
 
-def access_firstboot_finalize(network):
-    """Persist the required management CIDR and remove public setup access."""
+def access_firstboot_finalize(networks_value, client_address):
+    """Persist management CIDRs and remove public setup access."""
     sys.path.insert(0, "/usr/local/lib")
-    from consolepi_firstboot_security import generic_web_setup_pending
+    from consolepi_firstboot_security import (
+        generic_web_setup_pending, parse_management_networks,
+    )
     if not generic_web_setup_pending(
             "/etc/consolepi/firstboot.json", "/etc/consolepi/generic-image.json"):
         raise ValueError("Generic first-boot dokončení není v tomto stavu povoleno.")
-    requested = str(ipaddress.IPv4Network(network, strict=False))
-    if ipaddress.IPv4Network(requested).prefixlen == 0:
-        raise ValueError("Management síť nesmí být 0.0.0.0/0.")
+    requested = parse_management_networks(networks_value, client_address)
     _, local_network = active_network()
-    records = [] if requested == local_network else [
-        normalise_source("First-boot management", requested)
+    records = [
+        normalise_source(f"First-boot management {index}", network)
+        for index, network in enumerate(requested, 1)
+        if network != local_network
     ]
     write_access_sources(records)
     update_firewall(local_network)
@@ -1759,8 +1779,8 @@ def main():
             access_delete(sys.argv[3])
         elif action == "generic-bootstrap" and len(sys.argv) == 3:
             access_generic_bootstrap()
-        elif action == "firstboot-finalize" and len(sys.argv) == 4:
-            access_firstboot_finalize(sys.argv[3])
+        elif action == "firstboot-finalize" and len(sys.argv) == 5:
+            access_firstboot_finalize(sys.argv[3], sys.argv[4])
         elif action == "migrate" and len(sys.argv) == 3:
             access_migrate()
         else:

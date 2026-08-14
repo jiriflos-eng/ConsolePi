@@ -172,6 +172,8 @@ grep -q '^Match User console LocalPort 2201$' "$ROOT/etc/ssh/sshd_config.d/40-co
     grep -q 'ip saddr 0.0.0.0/0 tcp dport { 22, 80, 443 }' "$ROOT/usr/local/sbin/consolepi-control" &&
     grep -q 'firstboot-finalize' "$ROOT/usr/local/sbin/consolepi-maintenance" &&
     grep -q 'name="management_network" required' "$ROOT/opt/consolepi-web/templates/setup.html" &&
+    grep -q 'čárkou nebo mezerou' "$ROOT/opt/consolepi-web/templates/setup.html" &&
+    grep -q 'parse_management_networks' "$ROOT/usr/local/sbin/consolepi-maintenance" &&
     grep -q 'generic_firstboot and key_mode != "keep"' "$ROOT/opt/consolepi-web/app.py" &&
     grep -q 'value="keep" checked' "$ROOT/opt/consolepi-web/templates/setup.html" &&
     grep -q 'sanitize_boot_partition' "$ROOT/usr/local/sbin/consolepi-prepare-generic-image" &&
