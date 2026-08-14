@@ -38,6 +38,10 @@ confirm_pending() {
 
 configure_network() {
     show_network
+    if is_remote; then
+        printf '%s\n' \
+            'Pokud menite ConsolePi do jine site nez ma administrator, nejprve ji pridejte volbou Povolene management site (firewall).'
+    fi
     printf '\nVyberte rezim: [1] DHCP  [2] Staticka adresa  [0] Zpet\nVolba: '
     IFS= read -r mode
     case "$mode" in
@@ -87,6 +91,101 @@ configure_network() {
     esac
 }
 
+show_access_sources() {
+    python3 -c '
+import json
+import sys
+
+status = json.load(sys.stdin)
+print("\nPovolene management site")
+print("  [automaticky] lokalni Ethernet: {}".format(status["local_network"]))
+sources = status.get("sources", [])
+if not sources:
+    print("  Zadna dalsi sit neni povolena.")
+else:
+    for index, source in enumerate(sources, 1):
+        print("  [{}] {}: {}".format(index, source["label"], source["network"]))
+'
+}
+
+configure_access_sources() {
+    while :; do
+        access_status=$(sudo /usr/local/sbin/consolepi-control access status) || {
+            printf '%s\n' 'Seznam povolenych siti nelze nacist.'
+            return
+        }
+        if ! printf '%s\n' "$access_status" | show_access_sources; then
+            printf '%s\n' 'Seznam povolenych siti neni platny.'
+            return
+        fi
+        printf '\n[1] Pridat sit  [2] Odebrat sit  [0] Zpet\nVolba: '
+        IFS= read -r action
+        case "$action" in
+            1)
+                printf 'Popis site: '
+                IFS= read -r label
+                printf 'IPv4 sit v CIDR tvaru (napr. 192.168.50.0/24): '
+                IFS= read -r network
+                confirmation=
+                if [ "$network" = 0.0.0.0/0 ]; then
+                    printf '%s\n' 'VAROVANI: 0.0.0.0/0 povoli management ze vsech IPv4 adres.'
+                    printf 'Pro potvrzeni napiste presne POVOLIT VSEM: '
+                    IFS= read -r confirmation
+                    # Backend vyzaduje ceskou variantu s diakritikou. Menu
+                    # prijima ASCII text, aby fungovalo na kazdem terminalu.
+                    [ "$confirmation" = "POVOLIT VSEM" ] && confirmation="POVOLIT VŠEM"
+                fi
+                if sudo /usr/local/sbin/consolepi-control access add \
+                    "$label" "$network" "$confirmation" >/dev/null; then
+                    printf '%s\n' 'Management sit byla pridana a firewall aktualizovan.'
+                else
+                    printf '%s\n' 'Sit se nepodarilo pridat; firewall zustal beze zmeny.'
+                fi
+                ;;
+            2)
+                printf 'Cislo site k odebrani: '
+                IFS= read -r index
+                case "$index" in
+                    ''|*[!0-9]*)
+                        printf '%s\n' 'Neplatne cislo.'
+                        continue
+                        ;;
+                esac
+                source_id=$(
+                    printf '%s\n' "$access_status" |
+                        python3 -c '
+import json
+import sys
+
+index = int(sys.argv[1])
+sources = json.load(sys.stdin).get("sources", [])
+if index < 1 or index > len(sources):
+    raise SystemExit(1)
+print(sources[index - 1]["id"])
+' "$index"
+                ) || {
+                    printf '%s\n' 'Polozka s timto cislem neexistuje.'
+                    continue
+                }
+                printf 'Odebrat vybranou management sit? [a/N]: '
+                IFS= read -r answer
+                case "$answer" in
+                    a|A|ano|ANO)
+                        if sudo /usr/local/sbin/consolepi-control access delete \
+                            "$source_id" >/dev/null; then
+                            printf '%s\n' 'Management sit byla odebrana a firewall aktualizovan.'
+                        else
+                            printf '%s\n' 'Sit se nepodarilo odebrat; firewall zustal beze zmeny.'
+                        fi
+                        ;;
+                esac
+                ;;
+            0) return ;;
+            *) printf '%s\n' 'Neplatna volba.' ;;
+        esac
+    done
+}
+
 factory_reset() {
     printf '\n\033[31mTOVARNI RESET\033[0m\n'
     printf '%s\n' 'Nastavi DHCP, vymaze prirazeni USB kabelu, RADIUS, seriove predvolby a souborove zaznamy relaci.'
@@ -116,20 +215,22 @@ while :; do
     /usr/local/sbin/consolepi-login-status
     printf '%s\n' '  [1] Obnovit stav'
     printf '%s\n' '  [2] Nastaveni site (DHCP / staticka IPv4)'
-    printf '%s\n' '  [3] Diagnostika ConsolePi'
-    printf '%s\n' '  [4] Obnovit tovarni nastaveni'
-    printf '%s\n' '  [5] Prejit do shellu'
-    printf '%s\n' '  [6] Obnovit heslo webove administrace'
+    printf '%s\n' '  [3] Povolene management site (firewall)'
+    printf '%s\n' '  [4] Diagnostika ConsolePi'
+    printf '%s\n' '  [5] Obnovit tovarni nastaveni'
+    printf '%s\n' '  [6] Prejit do shellu'
+    printf '%s\n' '  [7] Obnovit heslo webove administrace'
     printf '%s\n' '  [0] Odhlasit'
     printf '\nVolba: '
     IFS= read -r choice || exit 0
     case "$choice" in
         1) ;;
         2) configure_network; pause ;;
-        3) sudo /usr/local/sbin/consolepi-diagnose; pause ;;
-        4) factory_reset; pause ;;
-        5) printf '%s\n' 'Prechazim do administracniho shellu.'; exec /bin/bash --noprofile --norc ;;
-        6) sudo /usr/local/sbin/consolepi-reset-web-password; pause ;;
+        3) configure_access_sources; pause ;;
+        4) sudo /usr/local/sbin/consolepi-diagnose; pause ;;
+        5) factory_reset; pause ;;
+        6) printf '%s\n' 'Prechazim do administracniho shellu.'; exec /bin/bash --noprofile --norc ;;
+        7) sudo /usr/local/sbin/consolepi-reset-web-password; pause ;;
         0) exit 0 ;;
         *) printf '%s\n' 'Neplatna volba.'; pause ;;
     esac

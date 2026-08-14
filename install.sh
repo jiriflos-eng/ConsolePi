@@ -376,6 +376,8 @@ fi
 
 backup_if_exists /opt/consolepi-web
 install -d -o root -g root -m 0755 /opt/consolepi-web
+# Odstranit legacy sablonu AI zapati i pri aktualizaci existujici instalace.
+rm -f /opt/consolepi-web/templates/_attribution.html
 cp -a "$ROOT/opt/consolepi-web/." /opt/consolepi-web/
 chown -R root:root /opt/consolepi-web
 find /opt/consolepi-web -type d -exec chmod 0755 {} \;

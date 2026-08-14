@@ -125,9 +125,3 @@ Konzolové porty jsou po připojení USB kabelů dostupné na portech 2201 až 2
 Pro základní diagnostiku na Raspberry Pi použijte:
 
     sudo consolepi-diagnose
-
-## Poděkování
-
-ConsolePi byl vyvíjen s využitím nástrojů ChatGPT a OpenAI Codex. Za návrh,
-ověření a provoz odpovídají autoři projektu; nejde o produkt ani oficiálně
-podporovaný projekt společnosti OpenAI.

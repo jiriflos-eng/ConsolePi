@@ -101,9 +101,3 @@ public.
 Please do not publish security-sensitive issues, credentials, device
 configuration, serial transcripts or private keys. See
 [SECURITY.md](SECURITY.md).
-
-## Acknowledgements
-
-ConsolePi was developed with the assistance of ChatGPT and OpenAI Codex.
-Project authors remain responsible for its design, verification, and operation;
-ConsolePi is not an OpenAI product and is not officially supported by OpenAI.
