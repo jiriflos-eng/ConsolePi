@@ -141,7 +141,7 @@ def write_access_sources(records):
     temporary.replace(ACCESS_SOURCES_CONFIG)
 
 
-def render_firewall(network, sources):
+def render_firewall(network, sources, generic_bootstrap=False):
     local = str(ipaddress.IPv4Network(network, strict=False))
     requested_networks = [ipaddress.IPv4Network(local)]
     requested_networks.extend(
@@ -153,6 +153,7 @@ def render_firewall(network, sources):
     networks = [str(item) for item in ipaddress.collapse_addresses(requested_networks)]
     elements = ", ".join(networks)
     snmp_rule = "        ip saddr @management_ipv4_networks udp dport 161 ct state new accept\n" if snmp_status_data()["enabled"] else ""
+    bootstrap_rule = "        ip saddr 0.0.0.0/0 tcp dport { 22, 80, 443 } ct state new accept\n" if generic_bootstrap else ""
     return f'''#!/usr/sbin/nft -f
 
 flush ruleset
@@ -177,6 +178,7 @@ table inet consolepi_filter {{
         ct state established,related accept
         ip protocol icmp accept
         ip6 nexthdr ipv6-icmp accept
+{bootstrap_rule}
         ip saddr @management_ipv4_networks tcp dport @console_ssh_ports ct state new accept
         ip saddr @management_ipv4_networks tcp dport 80 ct state new accept
         ip saddr @management_ipv4_networks tcp dport 443 ct state new accept
@@ -200,9 +202,9 @@ table inet consolepi_filter {{
 '''
 
 
-def update_firewall(network):
+def update_firewall(network, generic_bootstrap=False):
     ipaddress.IPv4Network(network, strict=False)
-    updated = render_firewall(network, access_sources())
+    updated = render_firewall(network, access_sources(), generic_bootstrap)
     candidate = STATE_DIR / "nftables.candidate"
     candidate.write_text(updated)
     run("nft", "-c", "-f", str(candidate))
@@ -278,6 +280,35 @@ def access_migrate():
     if not ACCESS_SOURCES_CONFIG.exists():
         write_access_sources([])
     _, local_network = active_network()
+    update_firewall(local_network)
+
+
+def access_generic_bootstrap():
+    """Open only setup transports while an intact generic claim is pending."""
+    sys.path.insert(0, "/usr/local/lib")
+    from consolepi_firstboot_security import generic_web_setup_pending
+    if not generic_web_setup_pending(
+            "/etc/consolepi/firstboot.json", "/etc/consolepi/generic-image.json"):
+        raise ValueError("Dočasný generic přístup není v tomto stavu povolen.")
+    _, local_network = active_network()
+    update_firewall(local_network, generic_bootstrap=True)
+
+
+def access_firstboot_finalize(network):
+    """Persist the required management CIDR and remove public setup access."""
+    sys.path.insert(0, "/usr/local/lib")
+    from consolepi_firstboot_security import generic_web_setup_pending
+    if not generic_web_setup_pending(
+            "/etc/consolepi/firstboot.json", "/etc/consolepi/generic-image.json"):
+        raise ValueError("Generic first-boot dokončení není v tomto stavu povoleno.")
+    requested = str(ipaddress.IPv4Network(network, strict=False))
+    if ipaddress.IPv4Network(requested).prefixlen == 0:
+        raise ValueError("Management síť nesmí být 0.0.0.0/0.")
+    _, local_network = active_network()
+    records = [] if requested == local_network else [
+        normalise_source("First-boot management", requested)
+    ]
+    write_access_sources(records)
     update_firewall(local_network)
 
 
@@ -1726,6 +1757,10 @@ def main():
             access_update(sys.argv[3], sys.argv[4], sys.argv[5], sys.argv[6])
         elif action == "delete" and len(sys.argv) == 4:
             access_delete(sys.argv[3])
+        elif action == "generic-bootstrap" and len(sys.argv) == 3:
+            access_generic_bootstrap()
+        elif action == "firstboot-finalize" and len(sys.argv) == 4:
+            access_firstboot_finalize(sys.argv[3])
         elif action == "migrate" and len(sys.argv) == 3:
             access_migrate()
         else:

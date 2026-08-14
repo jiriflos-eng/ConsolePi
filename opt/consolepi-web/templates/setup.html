@@ -11,6 +11,17 @@
     <div class="notice {{ category }}">{{ message }}</div>
   {% endfor %}
 
+  {% if ownership_required %}
+  <form method="post" class="setup-form">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <section class="setup-card">
+      <span class="setup-step">1</span>
+      <div><h2>Ověření správce</h2><p>Nejprve se přihlaste klíčem z Raspberry Pi Imageru: <code>ssh -i "$HOME/.ssh/consolepi-admin" consolepi@ADRESA</code>. Jednorázový kód zobrazí příkaz <code>cat ~/.consolepi-firstboot-token</code>. Platí 10 minut.</p></div>
+      <label>Jednorázový kód<input type="password" name="ownership_token" autocomplete="one-time-code" required maxlength="128"></label>
+    </section>
+    <button type="submit">Ověřit správce</button>
+  </form>
+  {% else %}
   <form method="post" class="setup-form">
     <input type="hidden" name="csrf" value="{{ csrf }}">
     <section class="setup-card">
@@ -46,6 +57,14 @@
       {% endif %}
     </section>
 
+    {% if generic_firstboot %}
+    <section class="setup-card">
+      <span class="setup-step">4</span>
+      <div><h2>Management síť</h2><p>Zadejte IPv4 síť, ze které budete ConsolePi spravovat. Musí obsahovat adresu tohoto prohlížeče. Po dokončení se dočasný přístup z ostatních sítí okamžitě uzavře.</p></div>
+      <label>Povolená management síť<input name="management_network" required placeholder="192.168.1.0/24" autocapitalize="none" spellcheck="false"></label>
+    </section>
+    {% endif %}
+
     <section class="setup-card setup-summary">
       <span class="setup-step">4</span>
       <div><h2>Co bude dokončeno</h2><p>Aktuální síť zůstane po dobu průvodce zachována: {{ network.address or "adresa zatím není přidělena" }}/{{ network.prefix }}. DHCP nebo statickou adresu lze potom bezpečně nastavit v nabídce Síť.</p></div>
@@ -57,5 +76,6 @@
     </section>
     <button type="submit">Dokončit základní nastavení</button>
   </form>
+  {% endif %}
 </section>
 {% endblock %}

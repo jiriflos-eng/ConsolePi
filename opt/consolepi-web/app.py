@@ -1,5 +1,6 @@
 #!/usr/bin/python3
 import base64
+import ipaddress
 import json
 import os
 import platform
@@ -119,6 +120,18 @@ def setup_csrf_valid():
     return secrets.compare_digest(
         session.get("setup_csrf", ""), request.form.get("csrf", "")
     )
+
+
+def setup_client_address():
+    """Trust nginx's single-hop address header only from the loopback proxy."""
+    try:
+        peer = ipaddress.ip_address(request.remote_addr)
+        forwarded = ipaddress.ip_address(request.headers.get("X-Real-IP", ""))
+    except ValueError:
+        return ""
+    if not peer.is_loopback or forwarded.version != 4:
+        return ""
+    return str(forwarded)
 
 
 @APP.after_request
@@ -640,11 +653,29 @@ def login():
 def setup():
     state = firstboot_status()
     generic_firstboot = state.get("reason") == "generic_image"
+    ownership_required = bool(state.get("generic_claim_required"))
     if request.method == "POST":
         if not state.get("pending"):
             return redirect(url_for("login"))
         if not setup_csrf_valid():
             return "Neplatný CSRF token.", 403
+        if ownership_required and not session.get("setup_provisioning_session"):
+            result = maintenance("firstboot", "ownership-verify", {
+                "token": request.form.get("ownership_token", "").strip(),
+            })
+            if result.returncode:
+                flash(result.stderr.strip() or "Vlastnictví SSH klíče nebylo ověřeno.", "error")
+            else:
+                try:
+                    session_id = json.loads(result.stdout)["session_id"]
+                except (json.JSONDecodeError, KeyError, TypeError):
+                    flash("Ověření nevrátilo platnou provisioning session.", "error")
+                    return redirect(url_for("setup"))
+                session.clear()
+                session["setup_provisioning_session"] = session_id
+                session["setup_csrf"] = secrets.token_urlsafe(32)
+                flash("Držení privátního SSH klíče bylo ověřeno.", "success")
+            return redirect(url_for("setup"))
         password = request.form.get("web_password", "")
         confirmation = request.form.get("web_password_confirmation", "")
         if password != confirmation:
@@ -678,6 +709,9 @@ def setup():
                 "description": request.form.get("description", ""),
                 "admin_public_key": public_key if key_mode == "existing" else "",
                 "key_mode": key_mode,
+                "provisioning_session": session.get("setup_provisioning_session", ""),
+                "management_network": request.form.get("management_network", ""),
+                "client_address": setup_client_address(),
             }, timeout=120)
             if result.returncode:
                 flash(result.stderr.strip() or "Průvodce nelze dokončit.", "error")
@@ -711,6 +745,7 @@ def setup():
         identity=identity,
         hostname=command("hostname").stdout.strip(),
         generic_firstboot=generic_firstboot,
+        ownership_required=ownership_required and not session.get("setup_provisioning_session"),
         admin_key_present=bool(state.get("admin_key_present")),
     )
 

@@ -165,9 +165,12 @@ grep -q '^Match User console LocalPort 2201$' "$ROOT/etc/ssh/sshd_config.d/40-co
     grep -q '/var/backups/consolepi' "$ROOT/usr/local/sbin/consolepi-prepare-generic-image" &&
     grep -q 'systemd-analyze verify' "$ROOT/usr/local/sbin/consolepi-prepare-generic-image" &&
     grep -q 'validate_generic_access' "$ROOT/usr/local/sbin/consolepi-generic-image-firstboot" &&
-    ! grep -q '.consolepi-firstboot-token' "$ROOT/usr/local/sbin/consolepi-generic-image-firstboot" &&
-    ! grep -q 'ownership-verify' "$ROOT/usr/local/sbin/consolepi-maintenance" &&
-    ! grep -q 'setup_provisioning_session' "$ROOT/opt/consolepi-web/app.py" &&
+    grep -q '.consolepi-firstboot-token' "$ROOT/usr/local/sbin/consolepi-generic-image-firstboot" &&
+    grep -q 'ownership-verify' "$ROOT/usr/local/sbin/consolepi-maintenance" &&
+    grep -q 'setup_provisioning_session' "$ROOT/opt/consolepi-web/app.py" &&
+    grep -q 'access generic-bootstrap' "$ROOT/usr/local/sbin/consolepi-generic-image-firstboot" &&
+    grep -q 'ip saddr 0.0.0.0/0 tcp dport { 22, 80, 443 }' "$ROOT/usr/local/sbin/consolepi-control" &&
+    grep -q 'firstboot-finalize' "$ROOT/usr/local/sbin/consolepi-maintenance" &&
     grep -q 'generic_firstboot and key_mode != "keep"' "$ROOT/opt/consolepi-web/app.py" &&
     grep -q 'value="keep" checked' "$ROOT/opt/consolepi-web/templates/setup.html" &&
     grep -q 'sanitize_boot_partition' "$ROOT/usr/local/sbin/consolepi-prepare-generic-image" &&

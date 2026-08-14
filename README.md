@@ -37,6 +37,9 @@ published alongside it.
    SD card. Configure an administrator named `consolepi`, enable SSH with
    public-key authentication, and use DHCP for the initial network connection.
    The separate generic ConsolePi image must instead follow its key-only guide.
+   Its first-boot wizard requires a short-lived token retrieved over the
+   authenticated SSH connection and an IPv4 management CIDR. Only TCP
+   22/80/443 are temporarily reachable before that allow-list is committed.
 2. Boot the Pi and update the base operating system:
 
        ssh -i "$HOME/.ssh/consolepi-admin" consolepi@PI_ADDRESS

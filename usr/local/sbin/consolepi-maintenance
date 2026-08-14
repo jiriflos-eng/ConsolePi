@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 import base64
 import hashlib
+import ipaddress
 import io
 import json
 import os
@@ -16,7 +17,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 sys.path.insert(0, "/usr/local/lib")
 from consolepi_firstboot_security import (
-    claim_required, firstboot_reason, generic_state, write_generic_state,
+    claim_required, consume_session, consume_token, firstboot_reason,
+    generic_state, validate_session, write_generic_state,
 )
 
 from cryptography import x509
@@ -27,6 +29,9 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 IDENTITY = Path("/etc/consolepi/identity.json")
 FIRSTBOOT = Path("/etc/consolepi/firstboot.json")
 GENERIC_IMAGE = Path("/etc/consolepi/generic-image.json")
+FIRSTBOOT_CLAIM_TOKEN = Path("/home/consolepi/.consolepi-firstboot-token")
+FIRSTBOOT_CLAIM_META = Path("/etc/consolepi/firstboot-claim.json")
+FIRSTBOOT_SESSIONS = Path("/var/lib/consolepi-web/firstboot-sessions")
 HOSTS = Path("/etc/hosts")
 TLS_DIR = Path("/etc/consolepi/tls")
 TLS_CERT = TLS_DIR / "consolepi.crt"
@@ -144,6 +149,26 @@ def firstboot_status():
         "generic_claim_required": generic_claim_required,
         "admin_key_present": admin_key_present,
     }))
+
+
+def firstboot_ownership_verify():
+    if generic_state(FIRSTBOOT, GENERIC_IMAGE) != "claim_pending":
+        raise ValueError("Zařízení není připravené k ověření vlastníka.")
+    session_id = consume_token(
+        str(payload().get("token", "")), FIRSTBOOT_CLAIM_TOKEN,
+        FIRSTBOOT_CLAIM_META, FIRSTBOOT_SESSIONS,
+    )
+    print(json.dumps({"verified": True, "session_id": session_id}))
+
+
+def verify_provisioning_session(values):
+    if firstboot_reason(FIRSTBOOT) != "generic_image":
+        return "", "standard"
+    if generic_state(FIRSTBOOT, GENERIC_IMAGE) != "claim_pending":
+        raise ValueError("Generic-image stav nepovoluje tuto operaci.")
+    session_id = str(values.get("provisioning_session", ""))
+    validate_session(session_id, FIRSTBOOT_SESSIONS)
+    return session_id, "claim_pending"
 
 
 
@@ -652,12 +677,18 @@ def firstboot_admin_key_install():
 
 def firstboot_configure():
     values = payload()
-    if firstboot_reason(FIRSTBOOT) == "generic_image":
-        generic = generic_state(FIRSTBOOT, GENERIC_IMAGE)
-        if generic != "claim_pending":
-            raise ValueError("Generic-image stav nepovoluje tuto operaci.")
-    else:
-        generic = "standard"
+    session_id, generic = verify_provisioning_session(values)
+    management_network = ""
+    if generic != "standard":
+        try:
+            management = ipaddress.IPv4Network(
+                str(values.get("management_network", "")).strip(), strict=False)
+            client = ipaddress.IPv4Address(str(values.get("client_address", "")).strip())
+        except ValueError as exc:
+            raise ValueError("Zadejte platnou IPv4 management síť.") from exc
+        if management.prefixlen == 0 or client not in management:
+            raise ValueError("Management síť musí obsahovat adresu tohoto správce a nesmí být 0.0.0.0/0.")
+        management_network = str(management)
     password_hash = str(values.get("web_password_hash", "")).strip()
     if not password_hash.startswith(("scrypt:", "pbkdf2:")) or len(password_hash) > 1024:
         raise ValueError("Neplatné heslo webové administrace.")
@@ -693,6 +724,14 @@ def firstboot_configure():
         sys.stdin = saved_stdin
     run("systemctl", "restart", "ssh")
 
+    if generic != "standard":
+        firewall = run(
+            "/usr/local/sbin/consolepi-control", "access", "firstboot-finalize",
+            management_network,
+        )
+        if firewall.returncode:
+            raise ValueError(firewall.stderr.strip() or "Nelze uzavřít dočasný first-boot firewall.")
+
     completed_state = {
         "state": "complete",
         "card_id": card_id(),
@@ -703,6 +742,9 @@ def firstboot_configure():
     write_firstboot(completed_state)
     if generic != "standard":
         write_generic_state(GENERIC_IMAGE, "complete")
+        consume_session(session_id, FIRSTBOOT_SESSIONS)
+        FIRSTBOOT_CLAIM_TOKEN.unlink(missing_ok=True)
+        FIRSTBOOT_CLAIM_META.unlink(missing_ok=True)
     run(
         "logger", "-p", "authpriv.notice", "-t", "consolepi",
         f"FIRSTBOOT_COMPLETE hostname={socket.gethostname()}",
@@ -805,6 +847,7 @@ def main():
         ("audit", "status"): audit_status,
         ("clone", "rekey"): clone_rekey,
         ("firstboot", "status"): firstboot_status,
+        ("firstboot", "ownership-verify"): firstboot_ownership_verify,
         ("firstboot", "configure"): firstboot_configure,
         ("firstboot", "admin-key-install"): firstboot_admin_key_install,
         ("storage", "status"): storage_status,
