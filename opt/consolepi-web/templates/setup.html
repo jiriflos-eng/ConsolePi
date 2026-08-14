@@ -46,6 +46,14 @@
       {% endif %}
     </section>
 
+    {% if generic_firstboot %}
+    <section class="setup-card">
+      <span class="setup-step">4</span>
+      <div><h2>Management sítě</h2><p>Zadejte jednu nebo více IPv4 sítí, ze kterých budete ConsolePi spravovat. Oddělte je čárkou nebo mezerou; alespoň jedna musí obsahovat adresu tohoto prohlížeče. Po dokončení se dočasný přístup z ostatních sítí okamžitě uzavře.</p></div>
+      <label>Povolené management sítě<input name="management_network" required placeholder="192.168.1.0/24, 10.20.0.0/16" autocapitalize="none" autocomplete="off" spellcheck="false"></label>
+    </section>
+    {% endif %}
+
     <section class="setup-card setup-summary">
       <span class="setup-step">4</span>
       <div><h2>Co bude dokončeno</h2><p>Aktuální síť zůstane po dobu průvodce zachována: {{ network.address or "adresa zatím není přidělena" }}/{{ network.prefix }}. DHCP nebo statickou adresu lze potom bezpečně nastavit v nabídce Síť.</p></div>

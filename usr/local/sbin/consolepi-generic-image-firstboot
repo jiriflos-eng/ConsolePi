@@ -71,7 +71,19 @@ print(validate_generic_access(
 PY
 ) || fail 'účet consolepi, locked password nebo authorized_keys nesplňuje bezpečnostní invarianty'
 
-case "$state" in claim_pending|complete) unset key; exit 0 ;; esac
+if [ "$state" = claim_pending ]; then
+    attempt=0
+    while ! ip -o -4 address show dev eth0 scope global 2>/dev/null | grep -q ' inet '; do
+        attempt=$((attempt + 1))
+        [ "$attempt" -lt 31 ] || fail 'ethernet DHCP adresa není dostupná pro dočasný firewall'
+        sleep 1
+    done
+    /usr/local/sbin/consolepi-control access generic-bootstrap >/dev/null ||
+        fail 'nelze obnovit dočasný generic firewall'
+    unset key
+    exit 0
+fi
+case "$state" in complete) unset key; exit 0 ;; esac
 
 install -d -o console -g console -m 0700 /home/console/.ssh
 tmp_console_key=$(mktemp /home/console/.ssh/.authorized_keys.XXXXXX)
@@ -114,7 +126,7 @@ while ! ip -o -4 address show dev eth0 scope global 2>/dev/null | grep -q ' inet
     [ "$attempt" -lt 31 ] || fail 'ethernet DHCP adresa není dostupná pro bezpečné nastavení firewallu'
     sleep 1
 done
-/usr/local/sbin/consolepi-control access migrate >/dev/null || fail 'nelze nastavit firewall pro aktuální ethernetovou síť'
+/usr/local/sbin/consolepi-control access generic-bootstrap >/dev/null || fail 'nelze nastavit dočasný generic firewall'
 
 python3 - "$STATE" <<'PY'
 import sys

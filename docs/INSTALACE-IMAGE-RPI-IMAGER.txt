@@ -53,6 +53,11 @@ KROK 2 – PRVNÍ START
 
 KROK 3 – DOKONČENÍ VE WEBU
 
+Po dobu nedokončeného generic first bootu jsou z IPv4 sítí dočasně
+dostupné pouze porty SSH 22 a web 80/443. Port 80 pouze přesměrovává na
+HTTPS. Sériové SSH porty 2201–2204, SNMP a ostatní služby zůstávají
+chráněné management allowlistem.
+
 1. V prohlížeči otevřete:
 
    https://IP_ADRESA_RPI/
@@ -60,15 +65,19 @@ KROK 3 – DOKONČENÍ VE WEBU
 2. Prohlížeč upozorní na vlastní HTTPS certifikát. To je při prvním spuštění
    očekávané; pokračujte na stránku zařízení.
 
-3. Zobrazí se průvodce prvním spuštěním. Nastavte heslo webové administrace,
-   identitu zařízení a zkontrolujte administrativní SSH přístup.
+3. Nastavte heslo webové administrace, identitu zařízení a jednu nebo více
+   povinných IPv4 management sítí v CIDR tvaru (např. `192.168.1.0/24,
+   10.20.0.0/16`). Sítě oddělte čárkou nebo mezerou. Alespoň jedna musí
+   obsahovat adresu počítače, ze kterého průvodce dokončujete; hodnota
+   `0.0.0.0/0` není povolena.
 
 4. U generic image se při prvním spuštění zachovává SSH veřejný klíč vložený
    Raspberry Pi Imagerem. Tento klíč je považován za ověřený už při bezpečném
    importu z Raspberry Pi Imageru.
 
-5. Dokončete průvodce. Po úspěšném dokončení se generic-image stav změní na
-   `complete` a webová administrace přejde do běžného provozního režimu.
+5. Dokončete průvodce. Nejdříve se aktivuje zadaný management allowlist
+   a odstraní dočasný globální přístup; teprve potom se generic-image stav
+   změní na `complete`.
 
 KROK 4 – SSH PO PRVNÍM SPUŠTĚNÍ
 -------------------------------

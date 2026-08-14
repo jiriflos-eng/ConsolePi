@@ -4,6 +4,7 @@
 - Před změnou adresy ConsolePi do jiné sítě menu připomene povolení původní administrátorské sítě, aby se správce neuzamkl mimo SSH a HTTPS.
 - Firewall se po změně DHCP adresy automaticky synchronizuje s novou lokální ethernetovou sítí a nadále zachovává explicitně povolené routované sítě.
 - Z webového rozhraní a dokumentace bylo odstraněno dříve přidané informační zápatí; aktualizace odstraní také jeho starou šablonu.
+- Generic first boot dočasně zpřístupní z IPv4 sítí pouze SSH 22 a web 80/443. Webový průvodce vyžaduje povinnou management síť; po dokončení se globální pravidlo odstraní.
 
 # ConsolePi 1.6.1 · Spolehlivá příprava generic image
 

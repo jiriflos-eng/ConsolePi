@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 import base64
 import hashlib
+import ipaddress
 import io
 import json
 import os
@@ -16,7 +17,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 sys.path.insert(0, "/usr/local/lib")
 from consolepi_firstboot_security import (
-    claim_required, firstboot_reason, generic_state, write_generic_state,
+    claim_required, firstboot_reason, generic_state, parse_management_networks,
+    write_generic_state,
 )
 
 from cryptography import x509
@@ -658,6 +660,14 @@ def firstboot_configure():
             raise ValueError("Generic-image stav nepovoluje tuto operaci.")
     else:
         generic = "standard"
+    management_networks = []
+    if generic != "standard":
+        try:
+            management_networks = parse_management_networks(
+                values.get("management_network", ""), values.get("client_address", "")
+            )
+        except ValueError as exc:
+            raise ValueError(str(exc)) from exc
     password_hash = str(values.get("web_password_hash", "")).strip()
     if not password_hash.startswith(("scrypt:", "pbkdf2:")) or len(password_hash) > 1024:
         raise ValueError("Neplatné heslo webové administrace.")
@@ -692,6 +702,14 @@ def firstboot_configure():
     finally:
         sys.stdin = saved_stdin
     run("systemctl", "restart", "ssh")
+
+    if generic != "standard":
+        firewall = run(
+            "/usr/local/sbin/consolepi-control", "access", "firstboot-finalize",
+            ",".join(management_networks), str(values.get("client_address", "")).strip(),
+        )
+        if firewall.returncode:
+            raise ValueError(firewall.stderr.strip() or "Nelze uzavřít dočasný first-boot firewall.")
 
     completed_state = {
         "state": "complete",

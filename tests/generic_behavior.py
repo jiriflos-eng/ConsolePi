@@ -1,5 +1,6 @@
 #!/usr/bin/python3
 import json
+import ast
 import os
 import pathlib
 import re
@@ -36,6 +37,116 @@ def test_states(root):
         assert security.generic_state(firstboot, generic) == "claim_required"
     firstboot.write_text('{"state":"pending","reason":"factory_reset"}\n')
     assert not security.claim_required(firstboot, generic)
+
+
+def test_management_networks():
+    assert security.parse_management_networks(
+        "192.168.1.0/24, 10.20.0.0/16\n172.16.0.0/12",
+        "10.20.30.40",
+    ) == ["10.20.0.0/16", "172.16.0.0/12", "192.168.1.0/24"]
+    assert security.parse_management_networks(
+        "192.168.0.0/24 192.168.1.0/24,192.168.1.0/24",
+        "192.168.1.20",
+    ) == ["192.168.0.0/23"]
+    for value, client in (
+        ("", "192.168.1.20"),
+        ("0.0.0.0/0", "192.168.1.20"),
+        ("2001:db8::/32", "192.168.1.20"),
+        ("192.168.1.0/not-a-prefix", "192.168.1.20"),
+        ("192.168.1.0/24", "198.51.100.10"),
+        ("192.168.1.0/24", "not-an-address"),
+    ):
+        expect_failure(security.parse_management_networks, value, client)
+    expect_failure(
+        security.parse_management_networks,
+        " ".join(f"10.0.{index}.0/24" for index in range(33)),
+        "10.0.0.1",
+    )
+
+
+def test_generic_bootstrap_firewall(root):
+    control = (ROOT / "usr/local/sbin/consolepi-control").read_text()
+    public_rule = 'ip saddr 0.0.0.0/0 tcp dport { 22, 80, 443 } ct state new accept'
+    tree = ast.parse(control)
+    render_node = next(
+        node for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "render_firewall"
+    )
+    namespace = {
+        "ipaddress": __import__("ipaddress"),
+        "snmp_status_data": lambda: {"enabled": False},
+    }
+    exec(compile(ast.Module(body=[render_node], type_ignores=[]), "control", "exec"), namespace)
+    standard = namespace["render_firewall"]("192.0.2.0/24", [])
+    bootstrap = namespace["render_firewall"]("192.0.2.0/24", [], True)
+    assert public_rule not in standard
+    assert public_rule in bootstrap
+    assert '2201' not in public_rule and '161' not in public_rule
+    assert bootstrap.index(public_rule) < bootstrap.index(
+        'ip saddr @management_ipv4_networks tcp dport @console_ssh_ports'
+    )
+    assert 'update_firewall(local_network, generic_bootstrap=True)' in control
+    assert 'update_firewall(local_network)\n' in control
+
+    migrate_node = next(
+        node for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "access_migrate"
+    )
+    calls = []
+    migrate_namespace = {
+        "ACCESS_SOURCES_CONFIG": type("Config", (), {"exists": lambda self: True})(),
+        "active_network": lambda: ("192.0.2.10", "192.0.2.0/24"),
+        "update_firewall": lambda network, generic_bootstrap=False: calls.append(
+            (network, generic_bootstrap)
+        ),
+        "FIRSTBOOT_CONFIG": root / "firstboot.json",
+        "GENERIC_IMAGE_CONFIG": root / "generic.json",
+        "sys": sys,
+    }
+    firstboot_module = type(sys)("consolepi_firstboot_security")
+    class TestClaimError(ValueError):
+        pass
+
+    firstboot_module.ClaimError = TestClaimError
+    firstboot_module.firstboot_reason = lambda firstboot: "generic_image"
+    firstboot_module.generic_web_setup_pending = lambda firstboot, generic: True
+    previous_module = sys.modules.get("consolepi_firstboot_security")
+    sys.modules["consolepi_firstboot_security"] = firstboot_module
+    try:
+        exec(
+            compile(ast.Module(body=[migrate_node], type_ignores=[]), "control", "exec"),
+            migrate_namespace,
+        )
+        migrate_namespace["access_migrate"]()
+        assert calls == [("192.0.2.0/24", True)]
+        calls.clear()
+        firstboot_module.generic_web_setup_pending = lambda firstboot, generic: False
+        migrate_namespace["access_migrate"]()
+        assert calls == [("192.0.2.0/24", False)]
+        calls.clear()
+        firstboot_module.firstboot_reason = lambda firstboot: ""
+        firstboot_module.generic_web_setup_pending = lambda firstboot, generic: (_ for _ in ()).throw(
+            AssertionError("standard install must not read generic state")
+        )
+        migrate_namespace["access_migrate"]()
+        assert calls == [("192.0.2.0/24", False)]
+        calls.clear()
+        firstboot_module.firstboot_reason = lambda firstboot: "generic_image"
+        firstboot_module.generic_web_setup_pending = lambda firstboot, generic: (_ for _ in ()).throw(
+            TestClaimError("malformed generic state")
+        )
+        try:
+            migrate_namespace["access_migrate"]()
+        except TestClaimError:
+            pass
+        else:
+            raise AssertionError("malformed generic state must fail closed")
+        assert calls == [("192.0.2.0/24", False)]
+    finally:
+        if previous_module is None:
+            del sys.modules["consolepi_firstboot_security"]
+        else:
+            sys.modules["consolepi_firstboot_security"] = previous_module
 
 
 def test_generic_update_and_validation_report(root):
@@ -330,7 +441,7 @@ def test_active_state_and_markers(root):
                        "rejected", unsafe, uid, gid)
 
     source = (ROOT / "usr/local/sbin/consolepi-generic-image-firstboot").read_text()
-    assert source.index("validate_generic_access") < source.index("case \"$state\" in claim_pending")
+    assert source.index("validate_generic_access") < source.index('if [ "$state" = claim_pending ]')
 
     # A completed Imager post-validation must be restart-safe.  If firstboot
     # fails later, an existing valid success marker must not cause
@@ -661,6 +772,8 @@ def main():
     with tempfile.TemporaryDirectory() as directory:
         root = pathlib.Path(directory)
         state_root = root / "states"; state_root.mkdir(); test_states(state_root)
+        test_management_networks()
+        firewall_root = root / "bootstrap-firewall"; firewall_root.mkdir(); test_generic_bootstrap_firewall(firewall_root)
         update_root = root / "update"; update_root.mkdir(); test_generic_update_and_validation_report(update_root)
         key_root = root / "keys"; key_root.mkdir(); test_keys(key_root)
         imager_root = root / "imager"; imager_root.mkdir(); test_imager_key_and_firstrun(imager_root)

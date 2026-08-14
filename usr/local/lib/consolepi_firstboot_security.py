@@ -1,8 +1,9 @@
 #!/usr/bin/python3
-"""Fail-closed generic-image claim state and one-time credentials."""
-import hashlib
+"""Fail-closed generic-image claim state and access validation."""
 import json
+import ipaddress
 import os
+import re
 import secrets
 import stat
 import subprocess
@@ -97,6 +98,28 @@ def generic_web_setup_pending(firstboot_path, generic_path, expected_uid=0):
     return (firstboot.get("state") == "pending" and
             firstboot.get("reason") == "generic_image" and
             generic.get("state") in {"pending", "claim_pending"})
+
+
+def parse_management_networks(value, client_address=None, maximum=32):
+    """Return a canonical IPv4 allow-list from comma/whitespace input."""
+    tokens = [item for item in re.split(r"[,\s]+", str(value).strip()) if item]
+    if not tokens or len(tokens) > maximum:
+        raise ClaimError(f"Zadejte 1 až {maximum} IPv4 management sítí.")
+    try:
+        networks = [ipaddress.IPv4Network(item, strict=False) for item in tokens]
+    except (ValueError, ipaddress.AddressValueError, ipaddress.NetmaskValueError) as exc:
+        raise ClaimError("Zadejte platné IPv4 management sítě v CIDR tvaru.") from exc
+    if any(network.prefixlen == 0 for network in networks):
+        raise ClaimError("Management síť 0.0.0.0/0 není povolena.")
+    canonical = list(ipaddress.collapse_addresses(networks))
+    if client_address is not None:
+        try:
+            client = ipaddress.IPv4Address(str(client_address).strip())
+        except ValueError as exc:
+            raise ClaimError("Adresu správce nelze ověřit.") from exc
+        if not any(client in network for network in canonical):
+            raise ClaimError("Alespoň jedna management síť musí obsahovat adresu tohoto správce.")
+    return [str(network) for network in canonical]
 
 
 def validate_generic_image_report(path, expected_uid=0, expected_gid=0):
