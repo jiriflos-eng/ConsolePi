@@ -145,9 +145,3 @@ ssh -tt -p 2201 console@IP_ADRESA_PI
   opakujte tento postup z téhož instalačního balíčku.
 - Reset do továrního nastavení smaže provozní konfiguraci a po restartu znovu
   otevře průvodce. Neodstraňuje samotnou aplikaci ani balíčky Raspberry Pi OS.
-
-## Poděkování
-
-ConsolePi byl vyvíjen s využitím nástrojů ChatGPT a OpenAI Codex. Za návrh,
-ověření a provoz odpovídají autoři projektu; nejde o produkt ani oficiálně
-podporovaný projekt společnosti OpenAI.

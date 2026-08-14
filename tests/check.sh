@@ -233,12 +233,19 @@ grep -q 'def logs_read' "$ROOT/usr/local/sbin/consolepi-control" &&
     ok "log viewer and theme switch" ||
     bad "log viewer or theme switch missing"
 
-grep -q 'include "_attribution.html"' "$ROOT/opt/consolepi-web/templates/base.html" &&
-    grep -q 'nejde o produkt ani' "$ROOT/opt/consolepi-web/templates/_attribution.html" &&
-    grep -q '^## Acknowledgements$' "$ROOT/README.md" &&
-    grep -q '^## Poděkování$' "$ROOT/README.cs.md" &&
-    ok "transparent AI development acknowledgement" ||
-    bad "AI development acknowledgement missing"
+! grep -Rq 'include "_attribution.html"' "$ROOT/opt/consolepi-web/templates" &&
+    ! grep -q 'project-attribution' "$ROOT/opt/consolepi-web/static/consolepi.css" &&
+    ! grep -Rqi 'ChatGPT\|OpenAI Codex' "$ROOT/README.md" "$ROOT/README.cs.md" "$ROOT/docs" &&
+    grep -q 'rm -f /opt/consolepi-web/templates/_attribution.html' "$ROOT/install.sh" &&
+    ok "attribution footer absent" ||
+    bad "attribution footer still present"
+
+grep -q 'configure_access_sources' "$ROOT/usr/local/sbin/consolepi-admin-menu" &&
+    grep -q 'consolepi-control access add' "$ROOT/usr/local/sbin/consolepi-admin-menu" &&
+    grep -q 'consolepi-control access delete' "$ROOT/usr/local/sbin/consolepi-admin-menu" &&
+    grep -q 'Povolene management site (firewall)' "$ROOT/usr/local/sbin/consolepi-admin-menu" &&
+    ok "terminal firewall allowlist management" ||
+    bad "terminal firewall allowlist management missing"
 
 grep -q 'TRANSCRIPT_MODE' "$ROOT/etc/consolepi/consolepi.conf" &&
     grep -q 'CITLIVY OBSAH ODSTRANEN' "$ROOT/usr/local/sbin/consolepi-transcript-writer" &&

@@ -15,7 +15,7 @@
     .storage{margin:22px 0;padding:20px;border:1px solid #d8e6e4;border-radius:14px;background:#fbfdfd}.storage h2{margin:0;font-size:20px}
     label{display:grid;gap:7px;margin-top:14px;font-weight:750}input{max-width:270px;padding:11px;border:1px solid #a9c6c1;border-radius:8px;font:inherit}
     button,a.button{display:inline-block;margin-top:15px;padding:12px 17px;border:0;border-radius:9px;background:#087f72;color:#fff;font:inherit;font-weight:800;text-decoration:none;cursor:pointer}
-    .next{margin-top:25px}.hint{margin-top:17px;font-size:13px;color:#687f7c}.project-attribution{margin-top:30px;padding-top:16px;border-top:1px solid #d8e6e4;color:#687f7c;font:12px/1.55 system-ui,-apple-system,sans-serif;text-align:center}@media(max-width:560px){main{padding:24px}body{padding:15px}}
+    .next{margin-top:25px}.hint{margin-top:17px;font-size:13px;color:#687f7c}@media(max-width:560px){main{padding:24px}body{padding:15px}}
   </style>
 </head>
 <body>
@@ -55,7 +55,6 @@
     </section>
     <a class="button next" href="{{ url_for('index') }}">Přejít na přehled zařízení</a>
     <p class="hint">Pokud se přehled neotevře na první pokus, obnovte jej až po potvrzení nového certifikátu v prohlížeči.</p>
-    {% include "_attribution.html" %}
   </main>
 </body>
 </html>

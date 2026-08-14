@@ -1,3 +1,10 @@
+# ConsolePi 1.6.2 · Management sítě z terminálu
+
+- Terminálové administrační menu umožňuje zobrazit, přidat a odebrat explicitně povolené management IPv4 sítě stejným validovaným backendem jako web.
+- Před změnou adresy ConsolePi do jiné sítě menu připomene povolení původní administrátorské sítě, aby se správce neuzamkl mimo SSH a HTTPS.
+- Firewall se po změně DHCP adresy automaticky synchronizuje s novou lokální ethernetovou sítí a nadále zachovává explicitně povolené routované sítě.
+- Z webového rozhraní a dokumentace bylo odstraněno dříve přidané informační zápatí; aktualizace odstraní také jeho starou šablonu.
+
 # ConsolePi 1.6.1 · Spolehlivá příprava generic image
 
 - Sanitizaci lze spustit volbou `--poweroff` jako samostatnou systemd úlohu; přerušení SSH relace ji nezastaví.

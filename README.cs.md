@@ -1,6 +1,6 @@
-# ConsolePi 1.6.1 – instalace na nový Raspberry Pi 3
+# ConsolePi 1.6.2 – instalace na nový Raspberry Pi 3
 
-Tento postup používá hotový archiv `ConsolePi-1.6.1-install.tar.gz`. Nevyžaduje bitovou kopii SD karty a je určen pro čistý Raspberry Pi OS Lite s DHCP.
+Tento postup používá hotový archiv `ConsolePi-1.6.2-install.tar.gz`. Nevyžaduje bitovou kopii SD karty a je určen pro čistý Raspberry Pi OS Lite s DHCP.
 
 ## 1. Vytvoření SSH klíče
 
@@ -74,15 +74,15 @@ Po restartu se znovu přihlaste stejným příkazem.
 
 Z Macu odešlete hotový archiv přímo do domovského adresáře uživatele `consolepi`. Místo `IP_RPI` doplňte DHCP adresu zařízení:
 
-    scp -i "$HOME/.ssh/consolepi-admin" "ConsolePi-1.6.1-install.tar.gz" consolepi@IP_RPI:~/
+    scp -i "$HOME/.ssh/consolepi-admin" "ConsolePi-1.6.2-install.tar.gz" consolepi@IP_RPI:~/
 
 Pokud soubor nemáte v aktuálním adresáři, použijte jeho úplnou cestu, například:
 
-    scp -i "$HOME/.ssh/consolepi-admin" "$HOME/Downloads/ConsolePi-1.6.1-install.tar.gz" consolepi@IP_RPI:~/
+    scp -i "$HOME/.ssh/consolepi-admin" "$HOME/Downloads/ConsolePi-1.6.2-install.tar.gz" consolepi@IP_RPI:~/
 
 Ve Windows použijte v PowerShellu odpovídající cestu k soukromému klíči:
 
-    scp -i "$env:USERPROFILE\.ssh\consolepi-admin" "$HOME\Downloads\ConsolePi-1.6.1-install.tar.gz" consolepi@IP_RPI:~/
+    scp -i "$env:USERPROFILE\.ssh\consolepi-admin" "$HOME\Downloads\ConsolePi-1.6.2-install.tar.gz" consolepi@IP_RPI:~/
 
 ## 5. Instalace na Raspberry Pi
 
@@ -94,7 +94,7 @@ Na Raspberry Pi spusťte následující příkazy. Archiv se rozbalí do vašeho
 
     install_dir="$HOME/consolepi-install"
     mkdir -p "$install_dir"
-    tar --no-same-owner -xzf "$HOME/ConsolePi-1.6.1-install.tar.gz" -C "$install_dir"
+    tar --no-same-owner -xzf "$HOME/ConsolePi-1.6.2-install.tar.gz" -C "$install_dir"
     cd "$install_dir"
     ./bootstrap-install.sh
 
@@ -125,9 +125,3 @@ Konzolové porty jsou po připojení USB kabelů dostupné na portech 2201 až 2
 Pro základní diagnostiku na Raspberry Pi použijte:
 
     sudo consolepi-diagnose
-
-## Poděkování
-
-ConsolePi byl vyvíjen s využitím nástrojů ChatGPT a OpenAI Codex. Za návrh,
-ověření a provoz odpovídají autoři projektu; nejde o produkt ani oficiálně
-podporovaný projekt společnosti OpenAI.

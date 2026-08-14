@@ -207,10 +207,3 @@ do `/etc/consolepi/generic-image-validation.json` a uloží postup do
 příčinu (například nedostatek místa nebo chybnou systemd jednotku) a spustit
 `sudo consolepi-prepare-generic-image` znovu. Sanitizovaný master nepoužívejte
 v provozu a image z něj nevytvářejte, dokud skript neskončí úspěšně.
-
-
-PODĚKOVÁNÍ
------------
-ConsolePi byl vyvíjen s využitím nástrojů ChatGPT a OpenAI Codex. Za návrh,
-ověření a provoz odpovídají autoři projektu; nejde o produkt ani oficiálně
-podporovaný projekt společnosti OpenAI.
