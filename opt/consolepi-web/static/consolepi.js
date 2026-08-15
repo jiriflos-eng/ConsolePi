@@ -6,7 +6,9 @@
     panels.forEach((panel) => panel.classList.toggle("active", panel.id === name));
   };
   tabs.forEach((tab) => tab.addEventListener("click", () => selectTab(tab.dataset.tab)));
-  if (new URLSearchParams(location.search).get("tab") === "network") selectTab("network");
+  if (new URLSearchParams(location.search).get("tab") === "network" || document.querySelector(".network-change-pending")) {
+    selectTab("network");
+  }
 
   const fields = document.querySelector("#static-fields");
   document.querySelectorAll('input[name="mode"]').forEach((radio) => {

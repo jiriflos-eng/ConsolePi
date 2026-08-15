@@ -86,6 +86,7 @@ python3 -c 'import ast, pathlib; ast.parse(pathlib.Path(
     ok "first-boot security Python syntax" || bad "first-boot security Python syntax"
 
 python3 "$ROOT/tests/generic_behavior.py" || bad "generic image behavioral security tests"
+python3 "$ROOT/tests/network_apply_behavior.py" || bad "delayed network apply behavior"
 if [ "${CONSOLEPI_SKIP_ARCHIVE_TEST:-0}" != 1 ]; then
     "$ROOT/tests/check-install-archive.sh" || bad "install archive credential scan"
 fi

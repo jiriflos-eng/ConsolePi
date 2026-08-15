@@ -800,11 +800,19 @@ def index():
 @APP.get("/admin")
 @authenticated
 def admin_dashboard():
+    pending_result = command(
+        "sudo", "/usr/local/sbin/consolepi-control", "network", "pending"
+    )
+    try:
+        pending_state = json.loads(pending_result.stdout) if pending_result.returncode == 0 else {}
+    except json.JSONDecodeError:
+        pending_state = {}
     return render_template(
         "index.html",
         ports=load_ports(),
         unassigned_usb_cables=unassigned_usb_cables(),
         network=network_status(),
+        network_change_pending=pending_state.get("phase", "active") == "active" and bool(pending_state),
         access_sources=access_sources_status(),
         proxy=proxy_status(),
         discovery=discovery_status(),
@@ -1679,6 +1687,26 @@ def network_apply():
         return redirect(url_for("admin_dashboard", tab="network"))
     data = json.loads(result.stdout)
     return render_template("network_pending.html", **data)
+
+
+@APP.post("/network/confirm-pending")
+@authenticated
+def network_confirm_pending():
+    if not csrf_valid():
+        return "Neplatný CSRF token.", 403
+    result = command(
+        "sudo",
+        "/usr/local/sbin/consolepi-control",
+        "network",
+        "confirm-pending",
+    )
+    flash(
+        "Nové síťové nastavení bylo potvrzeno. Automatický návrat byl zrušen."
+        if result.returncode == 0
+        else result.stderr.strip() or "Síťovou změnu se nepodařilo potvrdit.",
+        "success" if result.returncode == 0 else "error",
+    )
+    return redirect(url_for("admin_dashboard", tab="network"))
 
 
 @APP.post("/network/confirm")
