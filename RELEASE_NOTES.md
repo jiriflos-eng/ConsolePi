@@ -1,3 +1,9 @@
+# ConsolePi 1.6.3 · Spolehlivé dokončení změny síťové adresy
+
+- Změna síťového profilu se aktivuje s krátkým zpožděním, takže web stihne zobrazit cílovou adresu a další postup dříve, než původní spojení zanikne.
+- Po přihlášení na nové adrese správce změnu výslovně potvrdí; bez potvrzení se po 120 sekundách automaticky obnoví předchozí profil.
+- Současně lze připravovat pouze jednu změnu sítě a její stav je bezpečně uložen na serveru.
+
 # ConsolePi 1.6.2 · Management sítě z terminálu
 
 - Terminálové administrační menu umožňuje zobrazit, přidat a odebrat explicitně povolené management IPv4 sítě stejným validovaným backendem jako web.
