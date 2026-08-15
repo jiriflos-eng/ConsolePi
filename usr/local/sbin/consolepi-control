@@ -19,6 +19,7 @@ STATE_DIR = Path("/var/lib/consolepi-web")
 STATE = STATE_DIR / "network-rollback.json"
 CONNECTION = "Wired connection 1"
 ROLLBACK_UNIT = "consolepi-network-rollback"
+APPLY_UNIT = "consolepi-network-apply"
 NFTABLES = Path("/etc/nftables.conf")
 AUTHORIZED_KEYS = Path("/home/console/.ssh/authorized_keys")
 SERIAL_CONFIG = Path("/etc/consolepi/serial.conf")
@@ -61,7 +62,7 @@ def nm_get(field):
     return run("nmcli", "-g", field, "connection", "show", CONNECTION).stdout.strip()
 
 
-def save_state(token):
+def save_state(token, candidate):
     state = {
         "token": token,
         "method": nm_get("ipv4.method"),
@@ -69,6 +70,8 @@ def save_state(token):
         "gateway": nm_get("ipv4.gateway"),
         "dns": nm_get("ipv4.dns"),
         "nftables": NFTABLES.read_text(),
+        "candidate": candidate,
+        "phase": "staged",
     }
     STATE_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
     STATE.write_text(json.dumps(state))
@@ -372,19 +375,67 @@ def firewall_drops():
 def apply(args):
     if len(args) not in (1, 5) or args[0] not in ("dhcp", "static"):
         raise ValueError("Neplatné parametry síťové konfigurace.")
+    if STATE.exists():
+        raise ValueError("Nejprve potvrďte nebo nechte vrátit předchozí síťovou změnu.")
     mode = args[0]
+    if mode == "dhcp":
+        candidate = {"mode": "dhcp", "address": "", "prefix": "", "gateway": "", "dns": ""}
+    else:
+        address, prefix, gateway, dns = args[1:]
+        ipaddress.IPv4Interface(f"{address}/{prefix}")
+        ipaddress.IPv4Address(gateway)
+        for item in dns.split(","):
+            ipaddress.ip_address(item.strip())
+        candidate = {
+            "mode": "static",
+            "address": address,
+            "prefix": prefix,
+            "gateway": gateway,
+            "dns": dns,
+        }
     token = secrets.token_urlsafe(24)
-    save_state(token)
+    run("systemctl", "stop", f"{APPLY_UNIT}.timer", check=False)
+    run("systemctl", "stop", f"{APPLY_UNIT}.service", check=False)
     run("systemctl", "stop", f"{ROLLBACK_UNIT}.timer", check=False)
     run("systemctl", "stop", f"{ROLLBACK_UNIT}.service", check=False)
-    if mode == "dhcp":
+    save_state(token, candidate)
+    try:
+        run(
+            "systemd-run", f"--unit={APPLY_UNIT}", "--on-active=5s", "--collect",
+            "/usr/local/sbin/consolepi-control", "network", "activate", token,
+        )
+    except subprocess.CalledProcessError:
+        STATE.unlink(missing_ok=True)
+        raise
+    print(json.dumps({
+        "address": candidate["address"],
+        "mode": mode,
+        "delay": 5,
+    }))
+
+
+def activate(token):
+    state = json.loads(STATE.read_text())
+    if not secrets.compare_digest(state["token"], token):
+        raise ValueError("Neplatný aktivační token.")
+    candidate = state.get("candidate")
+    if not isinstance(candidate, dict) or candidate.get("mode") not in ("dhcp", "static"):
+        raise ValueError("Neplatný stav připravené síťové změny.")
+    run(
+        "systemd-run", "--unit", ROLLBACK_UNIT, "--on-active=120",
+        "/usr/local/sbin/consolepi-control", "network", "rollback", token,
+    )
+    if candidate["mode"] == "dhcp":
         run(
             "nmcli", "connection", "modify", CONNECTION,
             "ipv4.method", "auto", "ipv4.addresses", "",
             "ipv4.gateway", "", "ipv4.dns", "",
         )
     else:
-        address, prefix, gateway, dns = args[1:]
+        address = candidate.get("address", "")
+        prefix = candidate.get("prefix", "")
+        gateway = candidate.get("gateway", "")
+        dns = candidate.get("dns", "")
         ipaddress.IPv4Interface(f"{address}/{prefix}")
         ipaddress.IPv4Address(gateway)
         for item in dns.split(","):
@@ -394,18 +445,19 @@ def apply(args):
             "ipv4.method", "manual", "ipv4.addresses", f"{address}/{prefix}",
             "ipv4.gateway", gateway, "ipv4.dns", dns,
         )
-    run(
-        "systemd-run", "--unit", ROLLBACK_UNIT, "--on-active=120",
-        "/usr/local/sbin/consolepi-control", "network", "rollback", token,
-    )
     run("nmcli", "connection", "up", CONNECTION)
     address, network = active_network()
     update_firewall(network)
-    print(json.dumps({"token": token, "address": address}))
+    state["phase"] = "active"
+    STATE.write_text(json.dumps(state))
+    os.chmod(STATE, 0o600)
+    print(json.dumps({"address": address}))
 
 
 def confirm(token):
     state = json.loads(STATE.read_text())
+    if state.get("phase", "active") != "active":
+        raise ValueError("Síťová změna ještě není aktivní.")
     if not secrets.compare_digest(state["token"], token):
         raise ValueError("Neplatný potvrzovací token.")
     run("systemctl", "stop", f"{ROLLBACK_UNIT}.timer", check=False)
@@ -1750,6 +1802,8 @@ def main():
         action = sys.argv[2]
         if action == "apply":
             apply(sys.argv[3:])
+        elif action == "activate" and len(sys.argv) == 4:
+            activate(sys.argv[3])
         elif action == "confirm" and len(sys.argv) == 4:
             confirm(sys.argv[3])
         elif action == "rollback" and len(sys.argv) == 4:

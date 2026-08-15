@@ -63,6 +63,19 @@
 
 <section id="network" class="panel">
   <h2><span class="heading-illustration network" aria-hidden="true"></span>Nastavení Ethernetu</h2>
+  {% if network_change_pending %}
+  <section class="interface-status network-change-pending" role="status">
+    <div class="interface-status-head">
+      <div><small>Nepotvrzená změna</small><strong>Nová síťová konfigurace je aktivní</strong></div>
+      <span class="badge offline"><i></i>Čeká na potvrzení</span>
+    </div>
+    <p>Přihlášení přes tuto adresu potvrzuje, že je ConsolePi v nové síti dostupné. Potvrďte nastavení, jinak se zařízení automaticky vrátí k původní konfiguraci.</p>
+    <form action="{{ url_for('network_confirm_pending') }}" method="post">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <button type="submit">Potvrdit nové síťové nastavení</button>
+    </form>
+  </section>
+  {% endif %}
   <section class="interface-status network-status-card">
     <div class="interface-status-head">
       <div><small>Aktuální stav rozhraní</small><strong>{{ network.device }}</strong></div>
