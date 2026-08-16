@@ -1,3 +1,9 @@
+# ConsolePi 1.6.5 · Desktopový ConsolePi Discovery
+
+- ConsolePi Discovery je nyní připravený jako aplikace pro macOS a Windows: dvojklik otevře lokální grafické rozhraní bez nutnosti pracovat v terminálu.
+- Balíčky obsahují společnou ikonu pro Finder, Dock a Průzkumník souborů. Příkaz `--shell` ponechává dostupný textový výpis pro automatizaci.
+- Generování administrátorského klíče používá jednotný komentář `consolepi-administrator-key`, který zůstává jedním polem veřejného klíče.
+
 # ConsolePi 1.6.4 · Jednotné offline písmo rozhraní
 
 - Web ConsolePi používá vlastní lokálně dodané řezy Noto Sans pro celý text, takže se rozhraní na macOS, Windows a Linuxu vykresluje jednotně i bez přístupu k internetu.

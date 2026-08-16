@@ -33,6 +33,10 @@ if [ "$(uname -s)" = Darwin ] && command -v lipo >/dev/null 2>&1 && command -v d
     iconset="$icon_work/ConsolePiDiscovery.iconset"
     windows_resource="$SOURCE/consolepi-discovery_windows_amd64.syso"
     trap 'rm -rf "$icon_work"; rm -f "$windows_resource"' EXIT HUP INT TERM
+    # An older Finder-opened application bundle can retain metadata that
+    # invalidates a fresh ad-hoc signature.  Recreate only this generated
+    # package from scratch for every build.
+    rm -rf "$mac_app"
     mkdir -p "$iconset"
     for icon_spec in \
         'icon_16x16.png:16' 'icon_16x16@2x.png:32' \
@@ -116,6 +120,6 @@ if command -v shasum >/dev/null 2>&1; then
             ConsolePi-Discovery.ico \
             ConsolePi-Discovery-macOS-universal.zip \
             ConsolePi-Discovery-Windows-x64.zip \
-            > consolepi-discover.sha256
+            > "consolepi-discover-v${VERSION}.sha256"
     )
 fi

@@ -31,8 +31,8 @@ available in English here and in Czech in [README.cs.md](README.cs.md).
 ## Quick installation on Raspberry Pi OS Lite
 
 Download the matching installer first from
-[downloads/ConsolePi-1.6.4-install.tar.gz](downloads/ConsolePi-1.6.4-install.tar.gz).
-Its [SHA-256 checksum](downloads/ConsolePi-1.6.4-install.tar.gz.sha256) is
+[downloads/ConsolePi-1.6.5-install.tar.gz](downloads/ConsolePi-1.6.5-install.tar.gz).
+Its [SHA-256 checksum](downloads/ConsolePi-1.6.5-install.tar.gz.sha256) is
 published alongside it.
 
 1. Use Raspberry Pi Imager to write **Raspberry Pi OS Lite (64-bit)** to the
@@ -54,13 +54,13 @@ published alongside it.
 
 4. Copy the release bundle to the `consolepi` home directory:
 
-       scp -i "$HOME/.ssh/consolepi-admin" ConsolePi-1.6.4-install.tar.gz consolepi@PI_ADDRESS:~/
+       scp -i "$HOME/.ssh/consolepi-admin" ConsolePi-1.6.5-install.tar.gz consolepi@PI_ADDRESS:~/
 
 5. Log in again and run the bootstrap installer:
 
        install_dir="$HOME/consolepi-install"
        mkdir -p "$install_dir"
-       tar --no-same-owner -xzf "$HOME/ConsolePi-1.6.4-install.tar.gz" -C "$install_dir"
+       tar --no-same-owner -xzf "$HOME/ConsolePi-1.6.5-install.tar.gz" -C "$install_dir"
        cd "$install_dir"
        ./bootstrap-install.sh
 
@@ -95,9 +95,9 @@ SSH command without scanning the subnet. It works on macOS, Windows and Linux
 from a single Go source tree in `tools/consolepi-discover`.
 
 Ready-to-run portable binaries are available in the
-[ConsolePi v1.6.4 release](https://github.com/jiriflos-eng/ConsolePi/releases/tag/v1.6.4):
+[ConsolePi v1.6.5 release](https://github.com/jiriflos-eng/ConsolePi/releases/tag/v1.6.5):
 macOS (Apple Silicon and Intel), Windows x64, and Linux (x64 and ARM64).
-The accompanying `consolepi-discover-v1.6.4.sha256` file verifies the downloads.
+The accompanying `consolepi-discover-v1.6.5.sha256` file verifies the downloads.
 
 The service is limited to the current Ethernet/VLAN segment. It deliberately
 does not cross routers; use a known IP address or configure an mDNS reflector
