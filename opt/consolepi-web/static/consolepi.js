@@ -10,6 +10,40 @@
     selectTab("network");
   }
 
+  const networkCountdown = document.querySelector("[data-network-countdown]");
+  if (networkCountdown) {
+    const value = networkCountdown.querySelector("[data-network-countdown-value]");
+    const message = networkCountdown.querySelector("[data-network-countdown-message]");
+    const fallbackUrl = networkCountdown.dataset.fallbackUrl || "";
+    let deadline = Date.now() + Math.max(0, Number(networkCountdown.dataset.remainingSeconds || 0)) * 1000;
+    let expired = false;
+    const renderCountdown = () => {
+      const remaining = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+      if (value) value.textContent = String(remaining);
+      if (!remaining && !expired) {
+        expired = true;
+        if (message) message.textContent = fallbackUrl
+          ? "Limit vypršel. ConsolePi obnovuje původní síťový profil; za okamžik se otevře původní adresa."
+          : "Limit vypršel. ConsolePi obnovuje původní síťový profil.";
+        if (fallbackUrl) window.setTimeout(() => location.replace(fallbackUrl), 2500);
+      }
+    };
+    const refreshCountdown = async () => {
+      try {
+        const response = await fetch("/api/network/pending", {credentials: "same-origin", cache: "no-store"});
+        if (!response.ok) return;
+        const state = await response.json();
+        if (state.active) {
+          deadline = Date.now() + Math.max(0, Number(state.remaining_seconds || 0)) * 1000;
+          renderCountdown();
+        }
+      } catch (_) { /* The network can disappear while the rollback is applied. */ }
+    };
+    renderCountdown();
+    window.setInterval(renderCountdown, 250);
+    window.setInterval(refreshCountdown, 5000);
+  }
+
   const fields = document.querySelector("#static-fields");
   document.querySelectorAll('input[name="mode"]').forEach((radio) => {
     const update = () => {

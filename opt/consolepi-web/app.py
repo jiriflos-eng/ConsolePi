@@ -801,7 +801,7 @@ def index():
 @authenticated
 def admin_dashboard():
     pending_result = command(
-        "sudo", "/usr/local/sbin/consolepi-control", "network", "pending"
+        "sudo", "/usr/local/sbin/consolepi-control", "network", "pending-status"
     )
     try:
         pending_state = json.loads(pending_result.stdout) if pending_result.returncode == 0 else {}
@@ -812,7 +812,7 @@ def admin_dashboard():
         ports=load_ports(),
         unassigned_usb_cables=unassigned_usb_cables(),
         network=network_status(),
-        network_change_pending=pending_state.get("phase", "active") == "active" and bool(pending_state),
+        network_change_pending=pending_state if pending_state.get("active") else None,
         access_sources=access_sources_status(),
         proxy=proxy_status(),
         discovery=discovery_status(),
@@ -1707,6 +1707,20 @@ def network_confirm_pending():
         "success" if result.returncode == 0 else "error",
     )
     return redirect(url_for("admin_dashboard", tab="network"))
+
+
+@APP.get("/api/network/pending")
+@authenticated
+def network_pending_status():
+    result = command(
+        "sudo", "/usr/local/sbin/consolepi-control", "network", "pending-status"
+    )
+    if result.returncode:
+        return jsonify({"active": False})
+    try:
+        return jsonify(json.loads(result.stdout))
+    except json.JSONDecodeError:
+        return jsonify({"active": False})
 
 
 @APP.post("/network/confirm")

@@ -20,7 +20,7 @@ show_network() {
 }
 
 confirm_pending() {
-    if sudo /usr/local/sbin/consolepi-control network pending >/dev/null 2>&1; then
+    if sudo /usr/local/sbin/consolepi-control network pending-status 2>/dev/null | grep -q '"active": true'; then
         printf '\n\033[33mExistuje nepotvrzena zmena site.\033[0m\n'
         printf 'Je nove pripojeni funkcni a chcete nastaveni potvrdit? [a/N]: '
         IFS= read -r answer

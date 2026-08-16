@@ -64,12 +64,13 @@
 <section id="network" class="panel">
   <h2><span class="heading-illustration network" aria-hidden="true"></span>Nastavení Ethernetu</h2>
   {% if network_change_pending %}
-  <section class="interface-status network-change-pending" role="status">
+  <section class="interface-status network-change-pending" role="status" data-network-countdown data-remaining-seconds="{{ network_change_pending.remaining_seconds }}"{% if network_change_pending.previous_address %} data-fallback-url="https://{{ network_change_pending.previous_address }}/admin?tab=network"{% endif %}>
     <div class="interface-status-head">
       <div><small>Nepotvrzená změna</small><strong>Nová síťová konfigurace je aktivní</strong></div>
       <span class="badge offline"><i></i>Čeká na potvrzení</span>
     </div>
-    <p>Přihlášení přes tuto adresu potvrzuje, že je ConsolePi v nové síti dostupné. Potvrďte nastavení, jinak se zařízení automaticky vrátí k původní konfiguraci.</p>
+    <p>Nové nastavení zůstane aktivní ještě <strong data-network-countdown-value>{{ network_change_pending.remaining_seconds }}</strong> sekund. Potvrďte ho zde, jinak se zařízení automaticky vrátí k původní konfiguraci.</p>
+    <p class="hint" data-network-countdown-message>Odpočet je řízen serverem ConsolePi. Po vypršení se obnoví původní síťový profil.</p>
     <form action="{{ url_for('network_confirm_pending') }}" method="post">
       <input type="hidden" name="csrf" value="{{ csrf }}">
       <button type="submit">Potvrdit nové síťové nastavení</button>
