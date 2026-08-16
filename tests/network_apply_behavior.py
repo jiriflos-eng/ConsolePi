@@ -78,7 +78,36 @@ with tempfile.TemporaryDirectory() as temporary:
     assert any(call[:4] == ("nmcli", "connection", "up", module.CONNECTION) for call in calls)
     rollback = [call for call in calls if call and call[0] == "systemd-run"]
     assert len(rollback) == 1
-    assert "--on-active=120" in rollback[0]
-    assert json.loads(module.STATE.read_text())["phase"] == "active"
+    assert "--on-active=180" in rollback[0]
+    active_state = json.loads(module.STATE.read_text())
+    assert active_state["phase"] == "active"
+    assert active_state["previous_address"] == "192.0.2.20"
+    assert isinstance(active_state["rollback_deadline"], int)
+    pending = module.pending_status()
+    assert pending["active"] is True
+    assert pending["previous_address"] == "192.0.2.20"
+    assert 0 < pending["remaining_seconds"] <= 180
+
+    module.STATE.unlink()
+    assert module.pending_status() == {"active": False}
+
+    attempts = iter([IndexError("not ready"), ValueError("not ready"), ("192.0.2.30", "192.0.2.0/24")])
+    original_active_network = module.active_network
+    original_monotonic = module.time.monotonic
+    original_sleep = module.time.sleep
+
+    def delayed_active_network():
+        attempt = next(attempts)
+        if isinstance(attempt, BaseException):
+            raise attempt
+        return attempt
+
+    module.active_network = delayed_active_network
+    module.time.monotonic = lambda: 0
+    module.time.sleep = lambda _: None
+    assert module.wait_for_active_network() == ("192.0.2.30", "192.0.2.0/24")
+    module.active_network = original_active_network
+    module.time.monotonic = original_monotonic
+    module.time.sleep = original_sleep
 
 print("OK: delayed network apply behavior")

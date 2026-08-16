@@ -20,6 +20,7 @@ STATE = STATE_DIR / "network-rollback.json"
 CONNECTION = "Wired connection 1"
 ROLLBACK_UNIT = "consolepi-network-rollback"
 APPLY_UNIT = "consolepi-network-apply"
+NETWORK_ROLLBACK_SECONDS = 180
 NFTABLES = Path("/etc/nftables.conf")
 AUTHORIZED_KEYS = Path("/home/console/.ssh/authorized_keys")
 SERIAL_CONFIG = Path("/etc/consolepi/serial.conf")
@@ -63,6 +64,10 @@ def nm_get(field):
 
 
 def save_state(token, candidate):
+    try:
+        previous_address, _ = active_network()
+    except (IndexError, subprocess.CalledProcessError):
+        previous_address = ""
     state = {
         "token": token,
         "method": nm_get("ipv4.method"),
@@ -71,6 +76,7 @@ def save_state(token, candidate):
         "dns": nm_get("ipv4.dns"),
         "nftables": NFTABLES.read_text(),
         "candidate": candidate,
+        "previous_address": previous_address,
         "phase": "staged",
     }
     STATE_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -100,6 +106,24 @@ def active_network():
     ).stdout.splitlines()[0]
     interface = ipaddress.IPv4Interface(address)
     return str(interface.ip), str(interface.network)
+
+
+def wait_for_active_network(timeout=30):
+    """Wait for NetworkManager to publish the new IPv4 address.
+
+    ``nmcli connection up`` may return while eth0 is still transitioning.  A
+    direct read at that instant is empty, even though the activation succeeds
+    milliseconds later.  Do not lose the rollback state because of that race.
+    """
+    until = time.monotonic() + timeout
+    last_error = None
+    while time.monotonic() < until:
+        try:
+            return active_network()
+        except (IndexError, ValueError, subprocess.CalledProcessError) as error:
+            last_error = error
+            time.sleep(0.25)
+    raise RuntimeError("NetworkManager včas nepřidělil IPv4 adresu.") from last_error
 
 
 def normalise_source(label, network, source_id=None):
@@ -421,8 +445,10 @@ def activate(token):
     candidate = state.get("candidate")
     if not isinstance(candidate, dict) or candidate.get("mode") not in ("dhcp", "static"):
         raise ValueError("Neplatný stav připravené síťové změny.")
+    deadline = int(time.time()) + NETWORK_ROLLBACK_SECONDS
     run(
-        "systemd-run", "--unit", ROLLBACK_UNIT, "--on-active=120",
+        "systemd-run", "--unit", ROLLBACK_UNIT,
+        f"--on-active={NETWORK_ROLLBACK_SECONDS}",
         "/usr/local/sbin/consolepi-control", "network", "rollback", token,
     )
     if candidate["mode"] == "dhcp":
@@ -446,9 +472,10 @@ def activate(token):
             "ipv4.gateway", gateway, "ipv4.dns", dns,
         )
     run("nmcli", "connection", "up", CONNECTION)
-    address, network = active_network()
+    address, network = wait_for_active_network()
     update_firewall(network)
     state["phase"] = "active"
+    state["rollback_deadline"] = deadline
     STATE.write_text(json.dumps(state))
     os.chmod(STATE, 0o600)
     print(json.dumps({"address": address}))
@@ -462,6 +489,19 @@ def confirm(token):
         raise ValueError("Neplatný potvrzovací token.")
     run("systemctl", "stop", f"{ROLLBACK_UNIT}.timer", check=False)
     STATE.unlink(missing_ok=True)
+
+
+def pending_status():
+    if not STATE.exists():
+        return {"active": False}
+    state = json.loads(STATE.read_text())
+    deadline = state.get("rollback_deadline")
+    active = state.get("phase") == "active" and isinstance(deadline, int)
+    return {
+        "active": active,
+        "remaining_seconds": max(0, deadline - int(time.time())) if active else 0,
+        "previous_address": state.get("previous_address", "") if active else "",
+    }
 
 
 def key_fingerprint(line):
@@ -1814,6 +1854,8 @@ def main():
             if not STATE.exists():
                 raise ValueError("Žádná nepotvrzená síťová změna.")
             print(STATE.read_text())
+        elif action == "pending-status" and len(sys.argv) == 3:
+            print(json.dumps(pending_status()))
         elif action == "confirm-pending" and len(sys.argv) == 3:
             if not STATE.exists():
                 raise ValueError("Žádná nepotvrzená síťová změna.")
