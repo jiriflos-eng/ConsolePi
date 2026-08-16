@@ -31,6 +31,7 @@ for file in \
     "$ROOT/etc/profile.d/consolepi-status.sh" \
     "$ROOT/bootstrap-install.sh" \
     "$ROOT/tools/build-install-bundle.sh" \
+    "$ROOT/tools/build-consolepi-discover.sh" \
     "$ROOT/tests/check.sh"
 do
     if sh -n "$file"; then ok "shell syntax $file"; else bad "shell syntax $file"; fi
@@ -45,6 +46,34 @@ grep -q '\[ "$1" = eth0 \]' "$dispatcher" &&
     grep -q '90-consolepi-firewall' "$ROOT/install.sh" &&
     ok "NetworkManager DHCP firewall synchronization" ||
     bad "NetworkManager DHCP firewall synchronization missing"
+
+test -s "$ROOT/etc/avahi/services/consolepi.service" &&
+    grep -q '<type>_consolepi._tcp</type>' "$ROOT/etc/avahi/services/consolepi.service" &&
+    grep -q 'avahi-daemon' "$ROOT/install.sh" &&
+    grep -q 'ip daddr 224.0.0.251 udp dport 5353 accept' "$ROOT/etc/nftables.conf" &&
+    test -s "$ROOT/tools/consolepi-discover/main.go" &&
+    test -s "$ROOT/tools/consolepi-discover/go.mod" &&
+    test -x "$ROOT/tools/build-consolepi-discover.sh" &&
+    grep -q 'mDNS does not cross routed networks' "$ROOT/tools/consolepi-discover/main.go" &&
+    ok "local mDNS ConsolePi discovery" ||
+    bad "local mDNS ConsolePi discovery missing"
+
+test -s "$ROOT/opt/consolepi-web/static/fonts/noto-sans-latin-ext.woff2" &&
+    test -s "$ROOT/opt/consolepi-web/static/fonts/noto-sans-italic-latin-ext.woff2" &&
+    test -s "$ROOT/opt/consolepi-web/static/fonts/baloo-2-latin-ext.woff2" &&
+    test -s "$ROOT/opt/consolepi-web/static/fonts/NotoSans-OFL.txt" &&
+    test -s "$ROOT/opt/consolepi-web/static/fonts/Baloo2-OFL.txt" &&
+    grep -q 'font-family:"ConsolePi Noto"' "$ROOT/opt/consolepi-web/static/consolepi.css" &&
+    grep -q 'font-family:"ConsolePi Baloo"' "$ROOT/opt/consolepi-web/static/consolepi.css" &&
+    ok "self-hosted web fonts with Czech diacritics" ||
+    bad "self-hosted web fonts missing"
+
+if command -v go >/dev/null 2>&1; then
+    (cd "$ROOT/tools/consolepi-discover" && go test ./...) &&
+        ok "ConsolePi discovery Go tests" || bad "ConsolePi discovery Go tests"
+else
+    printf '%s\n' 'SKIP: Go není na tomto systému instalované (ConsolePi discovery testy)'
+fi
 
 grep -q 'xattr -cr "$STAGING"' "$ROOT/tools/build-install-bundle.sh" &&
     grep -q 'tar --no-xattrs -C "$STAGING"' "$ROOT/tools/build-install-bundle.sh" &&

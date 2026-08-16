@@ -1,3 +1,10 @@
+# ConsolePi 1.6.4 · Jednotné offline písmo rozhraní
+
+- Web ConsolePi používá vlastní lokálně dodané řezy Noto Sans pro celý text, takže se rozhraní na macOS, Windows a Linuxu vykresluje jednotně i bez přístupu k internetu.
+- Nápis ConsolePi používá zaoblené písmo Baloo 2. Obě rodiny zahrnují Latin Extended včetně české diakritiky; pro další písma lze bezpečně přidat příslušné subsety Noto Sans.
+- ConsolePi se oznamuje přes mDNS/Bonjour jako `_consolepi._tcp.local`; samostatný nástroj ConsolePi Discovery pro macOS, Windows a Linux je součástí zdrojového stromu a po připojení Ethernetu najde adresu zařízení bez síťového skenování.
+- Discovery zobrazuje hostname, zobrazovaný název a umístění zařízení. Tyto údaje se automaticky synchronizují po jejich uložení ve webové správě ConsolePi.
+
 # ConsolePi 1.6.3 · Spolehlivé dokončení změny síťové adresy
 
 - Změna síťového profilu se aktivuje s krátkým zpožděním, takže web stihne zobrazit cílovou adresu a další postup dříve, než původní spojení zanikne.
