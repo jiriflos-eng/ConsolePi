@@ -109,6 +109,10 @@ func TestGenerateInstallationKeyDoesNotOverwrite(t *testing.T) {
 	if !strings.HasPrefix(key.PublicKey, "ssh-ed25519 ") {
 		t.Fatalf("public key = %q", key.PublicKey)
 	}
+	parts := strings.Fields(key.PublicKey)
+	if len(parts) != 3 || parts[2] != "consolepi-administrator-key" {
+		t.Fatalf("public key comment = %q, want one comment token", key.PublicKey)
+	}
 	if _, err := generateInstallationKeyIn(home, "consolepi-admin"); err == nil {
 		t.Fatal("second key generation unexpectedly overwrote the key")
 	}

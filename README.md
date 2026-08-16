@@ -94,6 +94,11 @@ The optional `consolepi-discover` client lists the IPv4 address, HTTPS URL and
 SSH command without scanning the subnet. It works on macOS, Windows and Linux
 from a single Go source tree in `tools/consolepi-discover`.
 
+Ready-to-run portable binaries are available in the
+[ConsolePi v1.6.4 release](https://github.com/jiriflos-eng/ConsolePi/releases/tag/v1.6.4):
+macOS (Apple Silicon and Intel), Windows x64, and Linux (x64 and ARM64).
+The accompanying `consolepi-discover-v1.6.4.sha256` file verifies the downloads.
+
 The service is limited to the current Ethernet/VLAN segment. It deliberately
 does not cross routers; use a known IP address or configure an mDNS reflector
 when discovery is needed across routed networks.

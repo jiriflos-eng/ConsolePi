@@ -291,7 +291,7 @@ func generateInstallationKeyIn(home, name string) (generatedKey, error) {
 			return generatedKey{}, fmt.Errorf("inspect key path: %w", err)
 		}
 	}
-	command := exec.Command("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "ConsolePi administrator key", "-f", privatePath)
+	command := exec.Command("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "consolepi-administrator-key", "-f", privatePath)
 	if output, err := command.CombinedOutput(); err != nil {
 		return generatedKey{}, fmt.Errorf("ssh-keygen failed: %s", strings.TrimSpace(string(output)))
 	}

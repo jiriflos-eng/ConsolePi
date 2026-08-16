@@ -145,6 +145,11 @@ ve vzdálené síti proto použijte známou IP adresu nebo síťový mDNS reflec
 Nalezení přes mDNS není ověření identity: před zadáním přihlašovacích údajů
 vždy ověřte HTTPS certifikát nebo SSH host-key fingerprint.
 
+Hotové přenosné binárky jsou ke stažení v
+[releasu ConsolePi v1.6.4](https://github.com/jiriflos-eng/ConsolePi/releases/tag/v1.6.4):
+pro macOS (Apple Silicon i Intel), Windows x64 a Linux (x64 i ARM64).
+Soubor `consolepi-discover-v1.6.4.sha256` slouží k ověření stažených binárek.
+
 Samostatné binárky pro macOS, Windows a Linux vytvoří Go 1.22+ příkazem:
 
     ./tools/build-consolepi-discover.sh
