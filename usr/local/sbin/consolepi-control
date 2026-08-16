@@ -207,6 +207,9 @@ table inet consolepi_filter {{
         ip protocol icmp accept
         ip6 nexthdr ipv6-icmp accept
 {bootstrap_rule}
+        # Link-local mDNS discovery for ConsolePi.  It is not routed beyond
+        # the Ethernet segment and must also survive firewall regeneration.
+        ip daddr 224.0.0.251 udp dport 5353 accept
         ip saddr @management_ipv4_networks tcp dport @console_ssh_ports ct state new accept
         ip saddr @management_ipv4_networks tcp dport 80 ct state new accept
         ip saddr @management_ipv4_networks tcp dport 443 ct state new accept

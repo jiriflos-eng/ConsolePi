@@ -51,6 +51,7 @@ test -s "$ROOT/etc/avahi/services/consolepi.service" &&
     grep -q '<type>_consolepi._tcp</type>' "$ROOT/etc/avahi/services/consolepi.service" &&
     grep -q 'avahi-daemon' "$ROOT/install.sh" &&
     grep -q 'ip daddr 224.0.0.251 udp dport 5353 accept' "$ROOT/etc/nftables.conf" &&
+    grep -q 'ip daddr 224.0.0.251 udp dport 5353 accept' "$ROOT/usr/local/sbin/consolepi-control" &&
     test -s "$ROOT/tools/consolepi-discover/main.go" &&
     test -s "$ROOT/tools/consolepi-discover/go.mod" &&
     test -x "$ROOT/tools/build-consolepi-discover.sh" &&
