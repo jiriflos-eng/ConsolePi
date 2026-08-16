@@ -15,6 +15,7 @@ import tarfile
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
+from xml.sax.saxutils import escape as xml_escape
 sys.path.insert(0, "/usr/local/lib")
 from consolepi_firstboot_security import (
     claim_required, firstboot_reason, generic_state, parse_management_networks,
@@ -30,6 +31,7 @@ IDENTITY = Path("/etc/consolepi/identity.json")
 FIRSTBOOT = Path("/etc/consolepi/firstboot.json")
 GENERIC_IMAGE = Path("/etc/consolepi/generic-image.json")
 HOSTS = Path("/etc/hosts")
+AVAHI_SERVICE = Path("/etc/avahi/services/consolepi.service")
 TLS_DIR = Path("/etc/consolepi/tls")
 TLS_CERT = TLS_DIR / "consolepi.crt"
 TLS_KEY = TLS_DIR / "consolepi.key"
@@ -370,6 +372,59 @@ def identity_status():
     print(json.dumps(values))
 
 
+def mdns_text(value, maximum):
+    """Return UTF-8 text capped at a protocol-supplied byte limit."""
+    value = value.strip()
+    while len(value.encode("utf-8")) > maximum:
+        value = value[:-1]
+    return value.rstrip()
+
+
+def mdns_label(value):
+    """Return a DNS-SD instance label capped at one DNS label (63 octets)."""
+    return mdns_text(value.strip() or "ConsolePi", 63)
+
+
+def mdns_txt_record(key, value):
+    """Return one Avahi TXT record, whose wire format is limited to 255 bytes."""
+    return mdns_text(f"{key}={value}", 255)
+
+
+def write_avahi_identity(hostname, identity):
+    """Keep the ConsolePi DNS-SD identity in sync with web device identity."""
+    if not AVAHI_SERVICE.exists():
+        return False
+    display_name = str(identity.get("display_name") or "").strip()
+    location = str(identity.get("location") or "").strip()
+    friendly_name = display_name
+    if location:
+        friendly_name = f"{friendly_name} ({location})" if friendly_name else f"({location})"
+    label = hostname if not friendly_name or friendly_name == hostname else f"{hostname} · {friendly_name}"
+    label = mdns_label(label)
+    records = [mdns_txt_record("hostname", hostname)]
+    if display_name:
+        records.append(mdns_txt_record("display_name", display_name))
+    if location:
+        records.append(mdns_txt_record("location", location))
+    content = """<?xml version=\"1.0\" standalone=\"no\"?>
+<!DOCTYPE service-group SYSTEM \"avahi-service.dtd\">
+<service-group>
+  <name>{label}</name>
+  <service>
+    <type>_consolepi._tcp</type>
+    <port>443</port>
+    <txt-record>path=/</txt-record>
+    <txt-record>product=ConsolePi</txt-record>
+{records}  </service>
+</service-group>
+""".format(
+        label=xml_escape(label),
+        records="".join(f"    <txt-record>{xml_escape(record)}</txt-record>\n" for record in records),
+    )
+    atomic(AVAHI_SERVICE, content.encode(), 0o644)
+    return True
+
+
 def identity_apply(values):
     hostname = str(values.get("hostname", "")).strip()
     if not re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?", hostname):
@@ -383,7 +438,8 @@ def identity_apply(values):
             raise ValueError("Údaj identity je příliš dlouhý nebo neplatný.")
         identity[key] = value
     atomic(IDENTITY, (json.dumps(identity, indent=2) + "\n").encode(), 0o644)
-    if hostname != socket.gethostname():
+    hostname_changed = hostname != socket.gethostname()
+    if hostname_changed:
         run("hostnamectl", "set-hostname", hostname)
     hosts_lines = HOSTS.read_text().splitlines()
     replacement = f"127.0.1.1\t{hostname}"
@@ -396,6 +452,11 @@ def identity_apply(values):
     if not updated:
         hosts_lines.append(replacement)
     atomic(HOSTS, ("\n".join(hosts_lines) + "\n").encode(), 0o644)
+    # Avahi loads service names only on start/reload.  Refresh it after every
+    # identity update so DNS-SD never advertises a stale ConsolePi identity.
+    avahi_changed = write_avahi_identity(hostname, identity)
+    if avahi_changed and run("systemctl", "is-active", "avahi-daemon").returncode == 0:
+        run("systemctl", "restart", "avahi-daemon")
 
 
 def identity_configure():

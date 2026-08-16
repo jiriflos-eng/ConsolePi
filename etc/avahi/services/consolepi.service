@@ -1,0 +1,11 @@
+<?xml version="1.0" standalone="no"?>
+<!DOCTYPE service-group SYSTEM "avahi-service.dtd">
+<service-group>
+  <name replace-wildcards="yes">%h ConsolePi</name>
+  <service>
+    <type>_consolepi._tcp</type>
+    <port>443</port>
+    <txt-record>path=/</txt-record>
+    <txt-record>product=ConsolePi</txt-record>
+  </service>
+</service-group>

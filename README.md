@@ -23,14 +23,16 @@ available in English here and in Czech in [README.cs.md](README.cs.md).
 - local password, SSH public-key, or RADIUS authentication for console ports;
 - web setup wizard, network configuration, firewall access-source allowlist,
   optional SNMPv3, CDP/LLDP and health monitoring;
+- local-network ConsolePi discovery through mDNS/Bonjour, with a portable
+  macOS, Windows and Linux command-line client;
 - signed application updates and a first-boot workflow suitable for cloned or
   custom SD-card images.
 
 ## Quick installation on Raspberry Pi OS Lite
 
 Download the matching installer first from
-[downloads/ConsolePi-1.6.3-install.tar.gz](downloads/ConsolePi-1.6.3-install.tar.gz).
-Its [SHA-256 checksum](downloads/ConsolePi-1.6.3-install.tar.gz.sha256) is
+[downloads/ConsolePi-1.6.4-install.tar.gz](downloads/ConsolePi-1.6.4-install.tar.gz).
+Its [SHA-256 checksum](downloads/ConsolePi-1.6.4-install.tar.gz.sha256) is
 published alongside it.
 
 1. Use Raspberry Pi Imager to write **Raspberry Pi OS Lite (64-bit)** to the
@@ -39,26 +41,30 @@ published alongside it.
    The separate generic ConsolePi image must instead follow its key-only guide.
    Its first-boot wizard requires an IPv4 management CIDR. Only TCP
    22/80/443 are temporarily reachable before that allow-list is committed.
-2. Boot the Pi and update the base operating system:
+2. Boot the Pi, connect Ethernet, then use **ConsolePi Discovery** as the
+   first step to find its local IP address. Build the portable client from
+   [tools/consolepi-discover](tools/consolepi-discover) with the command in
+   [Find ConsolePi on the local network](#find-consolepi-on-the-local-network).
+3. Update the base operating system:
 
        ssh -i "$HOME/.ssh/consolepi-admin" consolepi@PI_ADDRESS
        sudo apt update
        sudo apt full-upgrade -y
        sudo reboot
 
-3. Copy the release bundle to the `consolepi` home directory:
+4. Copy the release bundle to the `consolepi` home directory:
 
-       scp -i "$HOME/.ssh/consolepi-admin" ConsolePi-1.6.3-install.tar.gz consolepi@PI_ADDRESS:~/
+       scp -i "$HOME/.ssh/consolepi-admin" ConsolePi-1.6.4-install.tar.gz consolepi@PI_ADDRESS:~/
 
-4. Log in again and run the bootstrap installer:
+5. Log in again and run the bootstrap installer:
 
        install_dir="$HOME/consolepi-install"
        mkdir -p "$install_dir"
-       tar --no-same-owner -xzf "$HOME/ConsolePi-1.6.3-install.tar.gz" -C "$install_dir"
+       tar --no-same-owner -xzf "$HOME/ConsolePi-1.6.4-install.tar.gz" -C "$install_dir"
        cd "$install_dir"
        ./bootstrap-install.sh
 
-5. Open `https://PI_ADDRESS/` and complete the first-boot wizard. It sets the
+6. Open `https://PI_ADDRESS/` and complete the first-boot wizard. It sets the
    web password, device identity, host keys and administrative SSH access.
 
 For a detailed Czech clean-install guide, see
@@ -80,6 +86,29 @@ When reusing an IP address after a first-boot reset, remove the old host key
 before reconnecting:
 
     ssh-keygen -R IP_RPI
+
+## Find ConsolePi on the local network
+
+ConsolePi publishes a minimal `_consolepi._tcp.local` mDNS/Bonjour service.
+The optional `consolepi-discover` client lists the IPv4 address, HTTPS URL and
+SSH command without scanning the subnet. It works on macOS, Windows and Linux
+from a single Go source tree in `tools/consolepi-discover`.
+
+The service is limited to the current Ethernet/VLAN segment. It deliberately
+does not cross routers; use a known IP address or configure an mDNS reflector
+when discovery is needed across routed networks.
+
+mDNS discovery is not authentication. Before entering credentials, verify the
+HTTPS certificate warning or the SSH host-key fingerprint as usual.
+
+Build standalone clients with Go 1.22+:
+
+    ./tools/build-consolepi-discover.sh
+
+For development, run `go run . --timeout 5s` from `tools/consolepi-discover`.
+The binary opens the local graphical page by default, bound only to
+`127.0.0.1`, with refresh, HTTPS and SSH-copy controls. Use `--shell` for
+terminal output or `--help` for all options.
 
 ## Development and release safety
 

@@ -106,7 +106,17 @@ if [ "$UPDATE_MODE" != yes ]; then
     apt-get update
     apt-get install -y openssh-server picocom util-linux nftables logrotate udev \
         python3-flask python3-cryptography python3-bcrypt gunicorn nginx openssl \
-        libpam-radius-auth gcc libpam0g-dev chrony cloud-guest-utils lldpd snmpd
+        libpam-radius-auth gcc libpam0g-dev chrony cloud-guest-utils lldpd snmpd avahi-daemon
+fi
+
+# Běžná aktualizace nesmí vyžadovat internet ani nové balíky. Čistá instalace
+# Avahi instaluje výše; starší offline instalace se pouze aktualizují a mDNS
+# oznámení se aktivuje až po běžné instalaci balíku avahi-daemon.
+AVAHI_AVAILABLE=no
+if dpkg-query -W -f='${db:Status-Status}' avahi-daemon 2>/dev/null | grep -qx installed; then
+    AVAHI_AVAILABLE=yes
+elif [ "$UPDATE_MODE" = yes ]; then
+    printf '%s\n' 'mDNS discovery zatím není aktivní: chybí balík avahi-daemon.'
 fi
 
 BACKUP_DIR=/var/backups/consolepi/$(date -u +%Y%m%dT%H%M%SZ)
@@ -125,6 +135,7 @@ backup_if_exists()
 install -d -m 0755 /etc/consolepi /etc/ssh/sshd_config.d /etc/profile.d /usr/local/sbin /usr/local/lib /usr/local/libexec /usr/share/consolepi
 install -d -m 0755 /etc/udev/rules.d /etc/tmpfiles.d /etc/logrotate.d
 install -d -m 0755 /etc/NetworkManager/dispatcher.d
+install -d -m 0755 /etc/avahi/services
 install -d -m 0755 /etc/systemd/system /etc/nginx/sites-available /etc/sudoers.d
 install -d -m 0755 /etc/consolepi/tls
 
@@ -169,6 +180,7 @@ for target in \
     /etc/tmpfiles.d/consolepi.conf \
     /etc/logrotate.d/consolepi \
     /etc/NetworkManager/dispatcher.d/90-consolepi-firewall \
+    /etc/avahi/services/consolepi.service \
     /etc/systemd/system/consolepi-web.service \
     /etc/systemd/system/consolepi-port-monitor.service \
     /etc/systemd/system/consolepi-update-check.service \
@@ -281,6 +293,7 @@ install -m 0644 "$ROOT/etc/tmpfiles.d/consolepi.conf" /etc/tmpfiles.d/consolepi.
 install -m 0644 "$ROOT/etc/logrotate.d/consolepi" /etc/logrotate.d/consolepi
 install -m 0755 "$ROOT/etc/NetworkManager/dispatcher.d/90-consolepi-firewall" \
     /etc/NetworkManager/dispatcher.d/90-consolepi-firewall
+install -m 0644 "$ROOT/etc/avahi/services/consolepi.service" /etc/avahi/services/consolepi.service
 install -m 0644 "$ROOT/etc/systemd/system/consolepi-web.service" /etc/systemd/system/consolepi-web.service
 install -m 0644 "$ROOT/etc/systemd/system/consolepi-port-monitor.service" /etc/systemd/system/consolepi-port-monitor.service
 install -m 0644 "$ROOT/etc/systemd/system/consolepi-update-check.service" /etc/systemd/system/consolepi-update-check.service
@@ -481,6 +494,9 @@ systemctl enable ssh
 systemctl reload ssh
 systemctl daemon-reload
 systemctl enable nginx consolepi-web consolepi-port-monitor
+if [ "$AVAHI_AVAILABLE" = yes ]; then
+    systemctl enable avahi-daemon
+fi
 if [ "$UPDATE_MODE" = yes ]; then
     # Webová aktualizace běží jako samostatný pracovní proces odvozený z
     # consolepi-web. Restart této služby by jej zabil dříve, než stačí zapsat
@@ -489,6 +505,9 @@ if [ "$UPDATE_MODE" = yes ]; then
     printf '%s\n' 'Aktualizace: restart služeb je odložen až na řízený reboot ConsolePi.'
 else
     systemctl restart nginx consolepi-web consolepi-port-monitor
+    if [ "$AVAHI_AVAILABLE" = yes ]; then
+        systemctl restart avahi-daemon
+    fi
 fi
 systemctl enable --now consolepi-update-check.timer
 
