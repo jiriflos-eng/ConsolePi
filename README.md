@@ -29,8 +29,8 @@ available in English here and in Czech in [README.cs.md](README.cs.md).
 ## Quick installation on Raspberry Pi OS Lite
 
 Download the matching installer first from
-[downloads/ConsolePi-1.6.2-install.tar.gz](downloads/ConsolePi-1.6.2-install.tar.gz).
-Its [SHA-256 checksum](downloads/ConsolePi-1.6.2-install.tar.gz.sha256) is
+[downloads/ConsolePi-1.6.3-install.tar.gz](downloads/ConsolePi-1.6.3-install.tar.gz).
+Its [SHA-256 checksum](downloads/ConsolePi-1.6.3-install.tar.gz.sha256) is
 published alongside it.
 
 1. Use Raspberry Pi Imager to write **Raspberry Pi OS Lite (64-bit)** to the
@@ -48,13 +48,13 @@ published alongside it.
 
 3. Copy the release bundle to the `consolepi` home directory:
 
-       scp -i "$HOME/.ssh/consolepi-admin" ConsolePi-1.6.2-install.tar.gz consolepi@PI_ADDRESS:~/
+       scp -i "$HOME/.ssh/consolepi-admin" ConsolePi-1.6.3-install.tar.gz consolepi@PI_ADDRESS:~/
 
 4. Log in again and run the bootstrap installer:
 
        install_dir="$HOME/consolepi-install"
        mkdir -p "$install_dir"
-       tar --no-same-owner -xzf "$HOME/ConsolePi-1.6.2-install.tar.gz" -C "$install_dir"
+       tar --no-same-owner -xzf "$HOME/ConsolePi-1.6.3-install.tar.gz" -C "$install_dir"
        cd "$install_dir"
        ./bootstrap-install.sh
 
