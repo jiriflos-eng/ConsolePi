@@ -16,7 +16,9 @@
     <a href="#connect">7. Připojení</a>
     <a href="#securecrt-logging">Logování v SecureCRT</a>
     <a href="#logging">Logování na ConsolePi</a>
+    <a href="#network-change">Bezpečná změna sítě</a>
     <a href="#access-sources">Povolené zdroje přístupu</a>
+    <a href="#generic-firstboot">Generic image · první spuštění</a>
     <a href="#proxy">Přístup přes proxy</a>
     <a href="#updates">Aktualizace systému</a>
     <a href="#maintenance">Údržba, reset a klonování</a>
@@ -185,6 +187,37 @@
         </ol>
         <p>Hodnota <code>0.0.0.0/0</code> je podporovaná, ale otevře ConsolePi pro celý IPv4 internet. Proto je nutné navíc do potvrzovacího pole napsat přesně <code>POVOLIT VŠEM</code>. Používejte ji jen ve výjimečném, vědomě zabezpečeném nasazení.</p>
         <p class="security-note">Před odstraněním vlastního zdroje ověřte, že stále zůstáváte v automatické lokální síti nebo máte jinou povolenou cestu. Jinak se k zařízení vzdáleně nepřipojíte.</p>
+      </div>
+    </section>
+
+    <section id="network-change" class="help-step">
+      <span class="step-number">N</span>
+      <div>
+        <h2>Bezpečná změna síťové konfigurace</h2>
+        <p>V nabídce <strong>Síť → Nastavení Ethernetu</strong> lze přepnout mezi DHCP a statickou IPv4 adresou. Po kontrole a odeslání se změna provede po krátké prodlevě, aby se dokončila odpověď prohlížeči.</p>
+        <ol>
+          <li>Pokud nová adresa patří do jiné sítě, přesuňte do ní také administrátorský počítač nebo upravte jeho síťové připojení.</li>
+          <li>V prohlížeči otevřete <code>https://NOVÁ-IP/admin?tab=network</code> a znovu se přihlaste.</li>
+          <li>Po skutečném připojení rozhraní se zobrazí blok <strong>Nepotvrzená změna</strong> s odpočtem a tlačítkem <strong>Potvrdit nové síťové nastavení</strong>.</li>
+          <li>Potvrďte ji do 180 sekund. Pokud čas vyprší, ConsolePi automaticky vrátí původní síťový profil i firewall; prohlížeč se poté pokusí otevřít původní adresu.</li>
+        </ol>
+        <p>Potvrzení v terminálovém administračním menu je záložní možnost. Výzva se ukazuje pouze po aktivaci nové konfigurace, ne během její přípravy.</p>
+        <p class="security-note">Před změnou do jiné sítě ji podle potřeby přidejte do seznamu povolených zdrojů přístupu. Jinak vás firewall může po úspěšné změně adresy správně odmítnout.</p>
+      </div>
+    </section>
+
+    <section id="generic-firstboot" class="help-step">
+      <span class="step-number">G</span>
+      <div>
+        <h2>Generic image a první spuštění</h2>
+        <p>Generic image vybírejte v Raspberry Pi Imageru z repozitáře ConsolePi. V OS Customisation ponechte účet <code>consolepi</code>, nastavte pouze jeden veřejný klíč typu <code>ssh-ed25519</code> a nenastavujte heslo ani jiné změny uživatele, hostname nebo Wi-Fi.</p>
+        <p>Při prvním spuštění je do dokončení webového průvodce dočasně povolen přístup na porty SSH 22 a HTTP/HTTPS 80/443 z IPv4 adres. Je to pouze instalační režim; po dokončení průvodce se veřejný přístup uzavře.</p>
+        <ol>
+          <li>Otevřete web ConsolePi na adrese získané z DHCP nebo nastavené v síti.</li>
+          <li>V průvodci vyplňte identitu zařízení, heslo webové administrace a jednu nebo více management IPv4 sítí. Sítě lze oddělit čárkou nebo mezerou; alespoň jedna musí obsahovat adresu použitého prohlížeče.</li>
+          <li>Po dokončení jsou SSH, web a konzolové porty omezeny na uložené management sítě. Uchovejte si použitý administrativní privátní SSH klíč mimo ConsolePi.</li>
+        </ol>
+        <p class="security-note">Generic image neobsahuje privátní administrativní klíč, sdílené heslo ani identitu původního zařízení. Pokud Imager předá chybějící nebo neplatný klíč či jinou nepovolenou customizaci, provisioning skončí uzavřeně a vyžaduje lokální recovery postup.</p>
       </div>
     </section>
 
