@@ -82,6 +82,12 @@ def test_generic_bootstrap_firewall(root):
     assert public_rule not in standard
     assert public_rule in bootstrap
     assert '2201' not in public_rule and '161' not in public_rule
+    mdns_rule = 'ip daddr 224.0.0.251 udp dport 5353 accept'
+    assert mdns_rule in standard
+    assert mdns_rule in bootstrap
+    assert standard.index(mdns_rule) < standard.index(
+        'ip saddr @management_ipv4_networks tcp dport @console_ssh_ports'
+    )
     assert bootstrap.index(public_rule) < bootstrap.index(
         'ip saddr @management_ipv4_networks tcp dport @console_ssh_ports'
     )
