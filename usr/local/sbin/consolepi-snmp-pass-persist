@@ -1,13 +1,14 @@
 #!/usr/bin/python3
 """Read-only ConsolePi metrics for Net-SNMP pass_persist."""
-import os
+import json
 import shutil
 import subprocess
-import time
 from pathlib import Path
 
 ROOT = "1.3.6.1.4.1.55555.1"
 SERVICES = ("ssh", "nginx", "consolepi-web", "consolepi-port-monitor", "nftables", "lldpd", "snmpd")
+PORTS_CONFIG = Path("/etc/consolepi/ports.conf")
+UPDATE_STATE = Path("/var/lib/consolepi-web/update-status.json")
 previous_cpu = None
 
 
@@ -23,6 +24,47 @@ def cpu_percent():
     return round(max(0, min(100, 100 * ((total - old[0]) - (idle - old[1])) / (total - old[0]))))
 
 
+def update_status():
+    """Return cached update state only; SNMP must not run APT or use the network."""
+    try:
+        value = json.loads(UPDATE_STATE.read_text())
+        return max(0, int(value.get("updates", 0))), int(bool(value.get("reboot_required", False)))
+    except (OSError, ValueError, json.JSONDecodeError):
+        return 0, 0
+
+
+def ethernet_link_state():
+    try:
+        state = Path("/sys/class/net/eth0/operstate").read_text().strip().lower()
+    except OSError:
+        return 2
+    return 1 if state == "up" else 2
+
+
+def serial_ports():
+    """Return fixed ConsolePi ports without exposing device paths or serial data."""
+    rows = []
+    try:
+        lines = PORTS_CONFIG.read_text().splitlines()
+    except OSError:
+        return rows
+    for line in lines:
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        fields = line.split("|", 2)
+        if len(fields) != 3 or not fields[0].isdigit():
+            continue
+        ssh_port, label, device = fields
+        if device.startswith("/dev/consolepi/unassigned-"):
+            state = 1
+        elif Path(device).exists():
+            state = 3
+        else:
+            state = 2
+        rows.append((int(ssh_port), label, state))
+    return rows
+
+
 def metrics():
     memory = {}
     for line in Path("/proc/meminfo").read_text().splitlines():
@@ -33,6 +75,7 @@ def metrics():
     disk = shutil.disk_usage("/")
     temperature = Path("/sys/class/thermal/thermal_zone0/temp")
     temp_deci = int(int(temperature.read_text().strip()) / 100) if temperature.exists() else 0
+    updates, reboot_required = update_status()
     values = {
         f"{ROOT}.1.0": ("gauge", cpu_percent()),
         f"{ROOT}.2.0": ("integer", temp_deci),
@@ -43,11 +86,19 @@ def metrics():
         f"{ROOT}.7.0": ("counter64", disk.total),
         f"{ROOT}.8.0": ("gauge", round(100 * (disk.total - disk.free) / disk.total) if disk.total else 0),
         f"{ROOT}.9.0": ("timeticks", int(float(Path("/proc/uptime").read_text().split()[0]) * 100)),
+        f"{ROOT}.10.0": ("gauge", updates),
+        f"{ROOT}.11.0": ("integer", reboot_required),
+        f"{ROOT}.12.0": ("integer", ethernet_link_state()),
     }
     for index, service in enumerate(SERVICES, 1):
         active = subprocess.run(("systemctl", "is-active", service), capture_output=True, text=True).stdout.strip() == "active"
-        values[f"{ROOT}.20.1.1.1.{index}"] = ("string", service)
-        values[f"{ROOT}.20.1.1.2.{index}"] = ("integer", 1 if active else 2)
+        values[f"{ROOT}.20.1.1.2.{index}"] = ("string", service)
+        values[f"{ROOT}.20.1.1.3.{index}"] = ("integer", 1 if active else 2)
+    for ssh_port, label, state in serial_ports():
+        # The SSH port is the stable SNMP table index; it is deliberately not
+        # exported as a second value because the OID instance already carries it.
+        values[f"{ROOT}.30.1.1.2.{ssh_port}"] = ("string", label)
+        values[f"{ROOT}.30.1.1.3.{ssh_port}"] = ("integer", state)
     return values
 
 
@@ -70,11 +121,16 @@ def answer(operation, oid):
     print(result, kind, value, sep="\n", flush=True)
 
 
-while True:
-    operation = input().strip().lower()
-    if operation == "ping":
-        print("PONG", flush=True)
-    elif operation in {"get", "getnext"}:
-        answer(operation, input().strip())
-    else:
-        print("NONE", flush=True)
+def main():
+    while True:
+        operation = input().strip().lower()
+        if operation == "ping":
+            print("PONG", flush=True)
+        elif operation in {"get", "getnext"}:
+            answer(operation, input().strip())
+        else:
+            print("NONE", flush=True)
+
+
+if __name__ == "__main__":
+    main()

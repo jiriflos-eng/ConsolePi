@@ -115,6 +115,25 @@ python3 -c 'import ast, pathlib; ast.parse(pathlib.Path(
     "'"$ROOT"'/usr/local/lib/consolepi_firstboot_security.py").read_text())' &&
     ok "first-boot security Python syntax" || bad "first-boot security Python syntax"
 
+python3 -c 'import ast, pathlib; ast.parse(pathlib.Path(
+    "'"$ROOT"'/usr/local/sbin/consolepi-snmp-pass-persist").read_text())' &&
+    ok "ConsolePi SNMP exporter Python syntax" || bad "ConsolePi SNMP exporter Python syntax"
+
+python3 "$ROOT/tests/snmp_behavior.py" || bad "ConsolePi SNMP exporter behavior"
+
+if command -v snmptranslate >/dev/null 2>&1; then
+    if MIBDIRS="+$ROOT/usr/share/snmp/mibs" MIBS=+CONSOLEPI-MIB \
+        snmptranslate -On CONSOLEPI-MIB::consolePiServiceState >/dev/null &&
+        MIBDIRS="+$ROOT/usr/share/snmp/mibs" MIBS=+CONSOLEPI-MIB \
+        snmptranslate -On CONSOLEPI-MIB::consolePiSerialPortState >/dev/null; then
+        ok "ConsolePi SNMP MIB"
+    else
+        bad "ConsolePi SNMP MIB"
+    fi
+else
+    printf '%s\n' 'SKIP: snmptranslate není na tomto systému instalován'
+fi
+
 python3 "$ROOT/tests/generic_behavior.py" || bad "generic image behavioral security tests"
 python3 "$ROOT/tests/network_apply_behavior.py" || bad "delayed network apply behavior"
 if [ "${CONSOLEPI_SKIP_ARCHIVE_TEST:-0}" != 1 ]; then

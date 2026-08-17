@@ -1,3 +1,9 @@
+# ConsolePi 1.7.0 · Zabbix monitoring
+
+- Přidána importovatelná šablona pro Zabbix 7.4 bez uložených SNMPv3 přihlašovacích údajů.
+- SNMPv3 nově poskytuje stav ethernetu, dostupné aktualizace, požadavek na restart a automatický přehled služeb i sériových portů.
+- Návod popisuje bezpečné propojení Zabbixu přes stávající allowlist firewallu; UDP/161 se mimo povolené zdroje neotevírá.
+
 # ConsolePi 1.6.6 · Spouštěče desktopového Discovery
 
 - macOS ZIP obsahuje složku s aplikací a spouštěčem `Spustit ConsolePi Discovery.command`; po kontrole checksumu odstraní karanténu pouze z přibalené aplikace a otevře ji.
