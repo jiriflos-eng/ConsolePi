@@ -1,3 +1,9 @@
+# ConsolePi 1.6.6 · Spouštěče desktopového Discovery
+
+- macOS ZIP obsahuje složku s aplikací a spouštěčem `Spustit ConsolePi Discovery.command`; po kontrole checksumu odstraní karanténu pouze z přibalené aplikace a otevře ji.
+- Windows ZIP používá stejnou strukturu se spouštěčem `Spustit ConsolePi Discovery.cmd`. Microsoft SmartScreen není obcházen; před spuštěním ověřte checksum souboru.
+- macOS balíček už nepřenáší skryté AppleDouble soubory, takže ad-hoc podpis aplikace zůstává po rozbalení platný.
+
 # ConsolePi 1.6.5 · Desktopový ConsolePi Discovery
 
 - ConsolePi Discovery je nyní připravený jako aplikace pro macOS a Windows: dvojklik otevře lokální grafické rozhraní bez nutnosti pracovat v terminálu.
