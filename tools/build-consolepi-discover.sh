@@ -85,7 +85,38 @@ if [ "$(uname -s)" = Darwin ] && command -v lipo >/dev/null 2>&1 && command -v d
         codesign --force --sign - "$mac_app" >/dev/null
         codesign --verify --verbose "$mac_app" >/dev/null
     fi
-    ditto -c -k --sequesterRsrc --keepParent "$mac_app" "$OUTPUT/ConsolePi-Discovery-macOS-universal.zip"
+    mac_package="$icon_work/ConsolePi Discovery"
+    mkdir -p "$mac_package"
+    cp -R "$mac_app" "$mac_package/ConsolePi Discovery.app"
+    printf '%s\n' \
+        '#!/bin/bash' \
+        'set -euo pipefail' \
+        '' \
+        'SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"' \
+        'APP="$SCRIPT_DIR/ConsolePi Discovery.app"' \
+        '' \
+        'if [[ ! -d "$APP" ]]; then' \
+        '    echo "Nenalezena aplikace: $APP" >&2' \
+        '    exit 1' \
+        'fi' \
+        '' \
+        '# Týká se výhradně přibalené aplikace v tomto adresáři.' \
+        'xattr -dr com.apple.quarantine "$APP"' \
+        'open "$APP"' \
+        > "$mac_package/Spustit ConsolePi Discovery.command"
+    chmod 0755 "$mac_package/Spustit ConsolePi Discovery.command"
+    if ! command -v zip >/dev/null 2>&1; then
+        echo "zip is required to build the macOS desktop package" >&2
+        exit 1
+    fi
+    # Start from a new archive.  COPYFILE_DISABLE and -X keep AppleDouble
+    # files out of the ZIP; those files would invalidate the ad-hoc signature.
+    rm -f "$OUTPUT/ConsolePi-Discovery-macOS-universal.zip"
+    (
+        cd "$icon_work"
+        COPYFILE_DISABLE=1 zip -X -q -r "$OUTPUT/ConsolePi-Discovery-macOS-universal.zip" \
+            'ConsolePi Discovery'
+    )
 fi
 
 # Desktop packages are GUI-first: double-clicking opens the local discovery
@@ -100,11 +131,22 @@ printf 'Building %s\n' "$(basename "$windows_gui")"
 )
 
 if command -v zip >/dev/null 2>&1; then
+    windows_work=$(mktemp -d "$OUTPUT/.consolepi-discover-windows.XXXXXX")
+    windows_package="$windows_work/ConsolePi Discovery"
+    mkdir -p "$windows_package"
+    cp "$windows_gui" "$windows_package/ConsolePi Discovery.exe"
+    cp "$OUTPUT/ConsolePi-Discovery.ico" "$windows_package/ConsolePi Discovery.ico"
+    printf '%s\r\n' \
+        '@echo off' \
+        'setlocal' \
+        'start "" "%~dp0ConsolePi Discovery.exe"' \
+        > "$windows_package/Spustit ConsolePi Discovery.cmd"
     (
-        cd "$OUTPUT"
-        zip -q -j ConsolePi-Discovery-Windows-x64.zip \
-            "$(basename "$windows_gui")" ConsolePi-Discovery.ico
+        cd "$windows_work"
+        rm -f "$OUTPUT/ConsolePi-Discovery-Windows-x64.zip"
+        zip -q -r "$OUTPUT/ConsolePi-Discovery-Windows-x64.zip" 'ConsolePi Discovery'
     )
+    rm -rf "$windows_work"
 fi
 
 if command -v shasum >/dev/null 2>&1; then
