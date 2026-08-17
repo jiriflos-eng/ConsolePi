@@ -1,6 +1,6 @@
-# ConsolePi 1.6.6 – instalace na nový Raspberry Pi 3
+# ConsolePi 1.7.0 – instalace na nový Raspberry Pi 3
 
-Tento postup používá hotový archiv `ConsolePi-1.6.6-install.tar.gz`. Nevyžaduje bitovou kopii SD karty a je určen pro čistý Raspberry Pi OS Lite s DHCP.
+Tento postup používá hotový archiv `ConsolePi-1.7.0-install.tar.gz`. Nevyžaduje bitovou kopii SD karty a je určen pro čistý Raspberry Pi OS Lite s DHCP.
 
 ## 1. Vytvoření SSH klíče
 
@@ -83,15 +83,15 @@ Po restartu se znovu přihlaste stejným příkazem.
 
 Z Macu odešlete hotový archiv přímo do domovského adresáře uživatele `consolepi`. Místo `IP_RPI` doplňte DHCP adresu zařízení:
 
-    scp -i "$HOME/.ssh/consolepi-admin" "ConsolePi-1.6.6-install.tar.gz" consolepi@IP_RPI:~/
+    scp -i "$HOME/.ssh/consolepi-admin" "ConsolePi-1.7.0-install.tar.gz" consolepi@IP_RPI:~/
 
 Pokud soubor nemáte v aktuálním adresáři, použijte jeho úplnou cestu, například:
 
-    scp -i "$HOME/.ssh/consolepi-admin" "$HOME/Downloads/ConsolePi-1.6.6-install.tar.gz" consolepi@IP_RPI:~/
+    scp -i "$HOME/.ssh/consolepi-admin" "$HOME/Downloads/ConsolePi-1.7.0-install.tar.gz" consolepi@IP_RPI:~/
 
 Ve Windows použijte v PowerShellu odpovídající cestu k soukromému klíči:
 
-    scp -i "$env:USERPROFILE\.ssh\consolepi-admin" "$HOME\Downloads\ConsolePi-1.6.6-install.tar.gz" consolepi@IP_RPI:~/
+    scp -i "$env:USERPROFILE\.ssh\consolepi-admin" "$HOME\Downloads\ConsolePi-1.7.0-install.tar.gz" consolepi@IP_RPI:~/
 
 ## 5. Instalace na Raspberry Pi
 
@@ -103,7 +103,7 @@ Na Raspberry Pi spusťte následující příkazy. Archiv se rozbalí do vašeho
 
     install_dir="$HOME/consolepi-install"
     mkdir -p "$install_dir"
-    tar --no-same-owner -xzf "$HOME/ConsolePi-1.6.6-install.tar.gz" -C "$install_dir"
+    tar --no-same-owner -xzf "$HOME/ConsolePi-1.7.0-install.tar.gz" -C "$install_dir"
     cd "$install_dir"
     ./bootstrap-install.sh
 
@@ -146,9 +146,9 @@ Nalezení přes mDNS není ověření identity: před zadáním přihlašovacíc
 vždy ověřte HTTPS certifikát nebo SSH host-key fingerprint.
 
 Hotové přenosné binárky jsou ke stažení v
-[releasu ConsolePi v1.6.6](https://github.com/jiriflos-eng/ConsolePi/releases/tag/v1.6.6):
+[releasu ConsolePi v1.7.0](https://github.com/jiriflos-eng/ConsolePi/releases/tag/v1.7.0):
 pro macOS (Apple Silicon i Intel), Windows x64 a Linux (x64 i ARM64).
-Soubor `consolepi-discover-v1.6.6.sha256` slouží k ověření stažených binárek.
+Soubor `consolepi-discover-v1.7.0.sha256` slouží k ověření stažených binárek.
 ZIP pro macOS i Windows obsahuje složku `ConsolePi Discovery` a spouštěč
 přibalené aplikace. Po ověření checksumu v macOS spusťte
 `Spustit ConsolePi Discovery.command`; ve Windows použijte
@@ -163,3 +163,13 @@ Binárka standardně otevře jednoduché grafické rozhraní pouze na `127.0.0.1
 kde lze seznam obnovit, otevřít web zařízení nebo zkopírovat SSH příkaz.
 Parametr `--shell` vypíše nálezy do terminálu; úplnou nápovědu zobrazí
 `--help`.
+
+## Monitoring v Zabbixu
+
+ConsolePi poskytuje metriky pouze pro čtení přes SNMPv3 `authPriv`. Připravená
+[šablona pro Zabbix 7.4](zabbix/template_consolepi_snmpv3_7.4.yaml) sleduje
+CPU, teplotu, paměť, kořenový oddíl, uptime, dostupné aktualizace a požadavek
+na restart, ethernetový link, požadované služby ConsolePi a stavy čtyř
+sériových konzolí. Postup importu je v [návodu pro Zabbix](zabbix/README.md).
+Před aktivací SNMPv3 přidejte server nebo proxy Zabbixu do **Síť → Povolené
+zdroje přístupu**; UDP/161 není povolen mimo tento allowlist.

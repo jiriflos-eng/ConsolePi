@@ -7,7 +7,7 @@ IMPORTS
         FROM SNMPv2-TC;
 
 consolePi MODULE-IDENTITY
-    LAST-UPDATED "20260730Z"
+    LAST-UPDATED "202608170000Z"
     ORGANIZATION "ConsolePi"
     CONTACT-INFO "Local ConsolePi administrator"
     DESCRIPTION "Read-only operational metrics exported by ConsolePi."
@@ -70,6 +70,25 @@ consolePiUptime OBJECT-TYPE
     DESCRIPTION "ConsolePi uptime."
     ::= { consolePiObjects 9 }
 
+consolePiAvailableUpdates OBJECT-TYPE
+    SYNTAX Gauge32
+    MAX-ACCESS read-only
+    STATUS current
+    DESCRIPTION "Number of packages reported by the most recent ConsolePi update check."
+    ::= { consolePiObjects 10 }
+consolePiRebootRequired OBJECT-TYPE
+    SYNTAX INTEGER { no(0), yes(1) }
+    MAX-ACCESS read-only
+    STATUS current
+    DESCRIPTION "Whether the latest package update requires a reboot."
+    ::= { consolePiObjects 11 }
+consolePiEthernetLinkState OBJECT-TYPE
+    SYNTAX INTEGER { up(1), down(2) }
+    MAX-ACCESS read-only
+    STATUS current
+    DESCRIPTION "Operational state of the eth0 Ethernet link."
+    ::= { consolePiObjects 12 }
+
 consolePiServices OBJECT IDENTIFIER ::= { consolePiObjects 20 }
 consolePiServiceTable OBJECT-TYPE
     SYNTAX SEQUENCE OF ConsolePiServiceEntry
@@ -78,6 +97,7 @@ consolePiServiceTable OBJECT-TYPE
     DESCRIPTION "ConsolePi service state table."
     ::= { consolePiServices 1 }
 ConsolePiServiceEntry ::= SEQUENCE {
+    consolePiServiceIndex Integer32,
     consolePiServiceName DisplayString,
     consolePiServiceState Integer32
 }
@@ -99,12 +119,50 @@ consolePiServiceName OBJECT-TYPE
     MAX-ACCESS read-only
     STATUS current
     DESCRIPTION "systemd service name."
-    ::= { consolePiServiceEntry 1 }
+    ::= { consolePiServiceEntry 2 }
 consolePiServiceState OBJECT-TYPE
     SYNTAX INTEGER { active(1), inactive(2) }
     MAX-ACCESS read-only
     STATUS current
     DESCRIPTION "Current systemd service state."
-    ::= { consolePiServiceEntry 2 }
+    ::= { consolePiServiceEntry 3 }
+
+consolePiSerialPorts OBJECT IDENTIFIER ::= { consolePiObjects 30 }
+consolePiSerialPortTable OBJECT-TYPE
+    SYNTAX SEQUENCE OF ConsolePiSerialPortEntry
+    MAX-ACCESS not-accessible
+    STATUS current
+    DESCRIPTION "Configured ConsolePi SSH serial-console ports."
+    ::= { consolePiSerialPorts 1 }
+ConsolePiSerialPortEntry ::= SEQUENCE {
+    consolePiSerialPortSshPort Integer32,
+    consolePiSerialPortLabel DisplayString,
+    consolePiSerialPortState Integer32
+}
+consolePiSerialPortEntry OBJECT-TYPE
+    SYNTAX ConsolePiSerialPortEntry
+    MAX-ACCESS not-accessible
+    STATUS current
+    DESCRIPTION "A configured ConsolePi serial-console port."
+    INDEX { consolePiSerialPortSshPort }
+    ::= { consolePiSerialPortTable 1 }
+consolePiSerialPortSshPort OBJECT-TYPE
+    SYNTAX Integer32 (1..65535)
+    MAX-ACCESS not-accessible
+    STATUS current
+    DESCRIPTION "SSH port used to access this serial console."
+    ::= { consolePiSerialPortEntry 1 }
+consolePiSerialPortLabel OBJECT-TYPE
+    SYNTAX DisplayString
+    MAX-ACCESS read-only
+    STATUS current
+    DESCRIPTION "ConsolePi label for this serial console."
+    ::= { consolePiSerialPortEntry 2 }
+consolePiSerialPortState OBJECT-TYPE
+    SYNTAX INTEGER { unassigned(1), disconnected(2), connected(3) }
+    MAX-ACCESS read-only
+    STATUS current
+    DESCRIPTION "Whether the configured serial adapter is assigned and physically present."
+    ::= { consolePiSerialPortEntry 3 }
 
 END
