@@ -23,8 +23,8 @@
       if (!remaining && !expired) {
         expired = true;
         if (message) message.textContent = fallbackUrl
-          ? "Limit vypršel. ConsolePi obnovuje původní síťový profil; za okamžik se otevře původní adresa."
-          : "Limit vypršel. ConsolePi obnovuje původní síťový profil.";
+          ? "Limit vypršel. ConsolePi+ obnovuje původní síťový profil; za okamžik se otevře původní adresa."
+          : "Limit vypršel. ConsolePi+ obnovuje původní síťový profil.";
         if (fallbackUrl) window.setTimeout(() => location.replace(fallbackUrl), 2500);
       }
     };

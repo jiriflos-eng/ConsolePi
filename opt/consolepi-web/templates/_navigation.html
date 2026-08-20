@@ -6,7 +6,7 @@
     html[data-theme="dark"] .health-updates { color:#ffd778; background:#4d3b14; border-color:#806323; }
     html[data-theme="dark"] .health-updates:hover { background:#5d4819; }
   </style>
-  <a class="brand brand-with-logo" href="{{ url_for('admin_dashboard') }}" aria-label="ConsolePi – přehled">
+  <a class="brand brand-with-logo" href="{{ url_for('admin_dashboard') }}" aria-label="ConsolePi+ – přehled">
     {% include "_brand.html" %}
   </a>
   {% if show_health|default(false) and header_updates.status == "updates" and header_updates.updates|int > 0 %}

@@ -1,14 +1,14 @@
 {% extends "base.html" %}
-{% block title %}Potvrzení sítě · ConsolePi{% endblock %}
+{% block title %}Potvrzení sítě · ConsolePi+{% endblock %}
 {% block content %}
 <section class="login-card pending">
   <div class="brand"><span class="brand-icon">✓</span><div><strong>Změna sítě byla přijata</strong><small>Použije se přibližně za {{ delay }} sekund</small></div></div>
   {% if mode == "static" %}
-  <p>ConsolePi přechází na statickou adresu <strong>{{ address }}</strong>. Pokud je nová adresa v jiné síti, přesuňte do ní také administrátorské zařízení nebo upravte jeho síťové připojení.</p>
+  <p>ConsolePi+ přechází na statickou adresu <strong>{{ address }}</strong>. Pokud je nová adresa v jiné síti, přesuňte do ní také administrátorské zařízení nebo upravte jeho síťové připojení.</p>
   <p>Potom v prohlížeči otevřete <a href="https://{{ address }}/admin?tab=network">https://{{ address }}/admin?tab=network</a>, znovu se přihlaste a zvolte <strong>Potvrdit nové síťové nastavení</strong>.</p>
   {% else %}
-  <p>ConsolePi přechází na DHCP. Zjistěte novou adresu v DHCP serveru, otevřete na ní webovou administraci a v kartě Síť potvrďte nové nastavení.</p>
+  <p>ConsolePi+ přechází na DHCP. Zjistěte novou adresu v DHCP serveru, otevřete na ní webovou administraci a v kartě Síť potvrďte nové nastavení.</p>
   {% endif %}
-  <p class="hint">Pokud nové spojení do 180 sekund nepotvrdíte, ConsolePi automaticky obnoví původní síťovou konfiguraci a firewall. Při otevření nové IP může prohlížeč znovu zobrazit upozornění na lokální HTTPS certifikát.</p>
+  <p class="hint">Pokud nové spojení do 180 sekund nepotvrdíte, ConsolePi+ automaticky obnoví původní síťovou konfiguraci a firewall. Při otevření nové IP může prohlížeč znovu zobrazit upozornění na lokální HTTPS certifikát.</p>
 </section>
 {% endblock %}

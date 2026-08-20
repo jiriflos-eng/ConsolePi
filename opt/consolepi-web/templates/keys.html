@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Přístupové klíče · ConsolePi{% endblock %}
+{% block title %}Přístupové klíče · ConsolePi+{% endblock %}
 {% block content %}
 {% set active_page = "keys" %}
 {% include "_navigation.html" %}
@@ -44,7 +44,7 @@
       <label>Ochranná fráze znovu<input type="password" name="passphrase_confirmation" minlength="8" autocomplete="new-password"></label>
       <button type="submit">Vytvořit a stáhnout privátní klíč</button>
     </form>
-    <p class="security-note"><strong>Soubor se nabídne jen jednou.</strong> ConsolePi si ponechá pouze veřejnou část. Při ztrátě vytvořte nový klíč a starý odeberte.</p>
+    <p class="security-note"><strong>Soubor se nabídne jen jednou.</strong> ConsolePi+ si ponechá pouze veřejnou část. Při ztrátě vytvořte nový klíč a starý odeberte.</p>
   </section>
 </div>
 {% endblock %}

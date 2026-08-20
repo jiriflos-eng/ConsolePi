@@ -80,7 +80,7 @@ def release_update_status():
             except (KeyError, TypeError, ValueError):
                 elapsed = 0
             if elapsed > 20:
-                return {"status": "completed", "message": "Aktualizace byla dokončena a ConsolePi je znovu dostupné."}
+                return {"status": "completed", "message": "Aktualizace byla dokončena a ConsolePi+ je znovu dostupné."}
         return status
     except json.JSONDecodeError:
         return {"status": "failed", "message": result.stderr.strip() or "Stav instalace není dostupný."}
@@ -173,13 +173,13 @@ def csrf_valid():
 
 
 def brand_identity():
-    identity = {"display_name": "ConsolePi"}
+    identity = {"display_name": "ConsolePi+"}
     try:
         identity.update(json.loads(IDENTITY_FILE.read_text()))
     except (OSError, json.JSONDecodeError):
         pass
     identity["display_name"] = str(
-        identity.get("display_name") or "ConsolePi"
+        identity.get("display_name") or "ConsolePi+"
     ).strip()
     try:
         identity["version"] = VERSION_FILE.read_text().strip()
@@ -986,7 +986,7 @@ def system_restore():
         "content": base64.b64encode(content).decode(),
     }, timeout=90)
     flash(
-        "Konfigurace byla obnovena. Doporučen je restart ConsolePi."
+        "Konfigurace byla obnovena. Doporučen je restart ConsolePi+."
         if result.returncode == 0 else result.stderr.strip(),
         "success" if result.returncode == 0 else "error",
     )
@@ -1292,7 +1292,7 @@ def system_release_upload():
         return "Neplatný CSRF token.", 403
     upload = request.files.get("package")
     if not upload or not upload.filename.lower().endswith(".cpiupdate"):
-        flash("Vyberte aktualizační soubor ConsolePi ve formátu .cpiupdate.", "error")
+        flash("Vyberte aktualizační soubor ConsolePi+ ve formátu .cpiupdate.", "error")
         return redirect(url_for("system_page", section="maintenance"))
     content = upload.stream.read(RELEASE_MAX_BYTES + 1)
     if len(content) > RELEASE_MAX_BYTES:
@@ -1325,7 +1325,7 @@ def system_release_upload():
     os.chmod(temporary_info, 0o600)
     temporary_info.replace(info_path)
     session["release_candidate"] = filename
-    flash(f"Balíček ConsolePi {info['version']} byl ověřen. Před instalací zkontrolujte novinky.", "success")
+    flash(f"Balíček ConsolePi+ {info['version']} byl ověřen. Před instalací zkontrolujte novinky.", "success")
     return redirect(url_for("system_page", section="maintenance"))
 
 
@@ -1899,7 +1899,7 @@ def network_snmp():
         }), timeout=35,
     )
     flash(
-        "SNMPv3 je aktivní na UDP portu 161; přístup je omezen stejným seznamem povolených zdrojů jako ConsolePi."
+        "SNMPv3 je aktivní na UDP portu 161; přístup je omezen stejným seznamem povolených zdrojů jako ConsolePi+."
         if result.returncode == 0 and enabled else
         "SNMPv3 byl vypnut a UDP port 161 byl odebrán z firewallu."
         if result.returncode == 0 else result.stderr.strip() or "Nastavení SNMPv3 selhalo.",

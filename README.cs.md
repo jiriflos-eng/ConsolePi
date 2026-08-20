@@ -1,6 +1,6 @@
 # ConsolePi+ 1.9.0 – instalace na nový Raspberry Pi 3
 
-Tento postup používá hotový archiv `ConsolePi-1.9.0-install.tar.gz`. Nevyžaduje bitovou kopii SD karty a je určen pro čistý Raspberry Pi OS Lite s DHCP.
+Tento postup používá hotový archiv `ConsolePi-Plus-1.9.0-install.tar.gz`. Nevyžaduje bitovou kopii SD karty a je určen pro čistý Raspberry Pi OS Lite s DHCP.
 
 ## 1. Vytvoření SSH klíče
 
@@ -58,10 +58,10 @@ pouze SSH s autentizací veřejným klíčem a vložte jeden klíč Ed25519. Ú�
 `consolepi` už image obsahuje a jeho systémové heslo je uzamčené.
 
 Zapište kartu, vložte ji do Raspberry Pi a připojte Ethernet. Jako první krok
-po připojení můžete IP adresu zjistit nástrojem **ConsolePi Discovery**. Jeho
+po připojení můžete IP adresu zjistit nástrojem **ConsolePi Plus Discovery**. Jeho
 zdroj je v [tools/consolepi-discover](tools/consolepi-discover); binárky pro
 macOS, Windows a Linux vytvoří příkaz uvedený dále v kapitole *Nalezení
-ConsolePi v lokální síti*.
+ConsolePi Plus v lokální síti*.
 Generic first-boot průvodce vyžaduje alespoň jednu IPv4 management síť;
 více sítí lze oddělit čárkou nebo mezerou.
 Do dokončení jsou z IPv4 sítí dočasně otevřené pouze porty 22, 80 a 443; poté se
@@ -70,7 +70,7 @@ přístup okamžitě omezí na zadaný allowlist. Podrobný postup je v
 
 ## 3. Povinná aktualizace Raspberry Pi OS
 
-Nejdříve se přihlaste na nové Raspberry Pi a aktualizujte systém. Instalátor ConsolePi vyžaduje aktuální Raspberry Pi OS a balíčky.
+Nejdříve se přihlaste na nové Raspberry Pi a aktualizujte systém. Instalátor ConsolePi+ vyžaduje aktuální Raspberry Pi OS a balíčky.
 
     ssh -i "$HOME/.ssh/consolepi-admin" consolepi@IP_RPI
     sudo apt update
@@ -83,15 +83,15 @@ Po restartu se znovu přihlaste stejným příkazem.
 
 Z Macu odešlete hotový archiv přímo do domovského adresáře uživatele `consolepi`. Místo `IP_RPI` doplňte DHCP adresu zařízení:
 
-    scp -i "$HOME/.ssh/consolepi-admin" "ConsolePi-1.9.0-install.tar.gz" consolepi@IP_RPI:~/
+    scp -i "$HOME/.ssh/consolepi-admin" "ConsolePi-Plus-1.9.0-install.tar.gz" consolepi@IP_RPI:~/
 
 Pokud soubor nemáte v aktuálním adresáři, použijte jeho úplnou cestu, například:
 
-    scp -i "$HOME/.ssh/consolepi-admin" "$HOME/Downloads/ConsolePi-1.9.0-install.tar.gz" consolepi@IP_RPI:~/
+    scp -i "$HOME/.ssh/consolepi-admin" "$HOME/Downloads/ConsolePi-Plus-1.9.0-install.tar.gz" consolepi@IP_RPI:~/
 
 Ve Windows použijte v PowerShellu odpovídající cestu k soukromému klíči:
 
-    scp -i "$env:USERPROFILE\.ssh\consolepi-admin" "$HOME\Downloads\ConsolePi-1.9.0-install.tar.gz" consolepi@IP_RPI:~/
+    scp -i "$env:USERPROFILE\.ssh\consolepi-admin" "$HOME\Downloads\ConsolePi-Plus-1.9.0-install.tar.gz" consolepi@IP_RPI:~/
 
 ## 5. Instalace na Raspberry Pi
 
@@ -103,7 +103,7 @@ Na Raspberry Pi spusťte následující příkazy. Archiv se rozbalí do vašeho
 
     install_dir="$HOME/consolepi-install"
     mkdir -p "$install_dir"
-    tar --no-same-owner -xzf "$HOME/ConsolePi-1.9.0-install.tar.gz" -C "$install_dir"
+    tar --no-same-owner -xzf "$HOME/ConsolePi-Plus-1.9.0-install.tar.gz" -C "$install_dir"
     cd "$install_dir"
     ./bootstrap-install.sh
 
@@ -111,10 +111,10 @@ Instalátor funguje jak při přihlášení SSH klíčem, tak při přihlášen�
 
 ## APT repozitáře po instalaci
 
-ConsolePi ve výchozím stavu používá oficiální repozitáře Debianu a Raspberry
+ConsolePi+ ve výchozím stavu používá oficiální repozitáře Debianu a Raspberry
 Pi. Pro síť bez přímého přístupu k internetu otevřete **Síť → APT repozitáře**
 a přepněte na lokální mirror. Zadejte samostatné HTTP/HTTPS adresy pro Debian,
-Debian Security a Raspberry Pi; ConsolePi všechny tři zdroje ověří odděleným
+Debian Security a Raspberry Pi; ConsolePi+ všechny tři zdroje ověří odděleným
 `apt-get update` ještě před nahrazením aktivní konfigurace. Proxy je nezávislá
 volba a lze ji kombinovat s oběma režimy. První bootstrap stále potřebuje
 dostupné zdroje balíčků nebo odpovídající proxy.
@@ -127,7 +127,7 @@ Po dokončení otevřete v prohlížeči:
 
 U nového zařízení je normální varování prohlížeče o vlastním HTTPS certifikátu. Dokončete průvodce: nastavte heslo webové administrace, název zařízení, hostname a případně rozšíření oddílu SD karty. V kroku **Administrativní SSH přístup** buď vložte existující veřejný klíč `.pub`, nebo nechte vytvořit nový osobní klíč. V druhém případě se privátní soubor stáhne jen jednou; bezpečně jej uložte a použijte v SecureCRT jako Identity File.
 
-Dokončení průvodce vytvoří nové SSH hostitelské klíče. Pokud se na stejné IP adrese dříve nacházelo jiné ConsolePi, odstraňte před dalším SSH starý fingerprint:
+Dokončení průvodce vytvoří nové SSH hostitelské klíče. Pokud se na stejné IP adrese dříve nacházelo jiné ConsolePi+, odstraňte před dalším SSH starý fingerprint:
 
     ssh-keygen -R IP_RPI
 
@@ -145,9 +145,9 @@ Pro základní diagnostiku na Raspberry Pi použijte:
 
     sudo consolepi-diagnose
 
-## Nalezení ConsolePi v lokální síti
+## Nalezení ConsolePi Plus v lokální síti
 
-ConsolePi oznamuje v aktuálním ethernetovém segmentu službu mDNS/Bonjour
+ConsolePi+ oznamuje v aktuálním ethernetovém segmentu službu mDNS/Bonjour
 `_consolepi._tcp.local`. Nástroj `consolepi-discover` pro macOS, Windows a
 Linux pak bez skenování sítě vypíše IPv4 adresu, HTTPS URL a SSH příkaz.
 Služba je pouze link-local: přes router nebo mezi VLAN neprochází. Pro hledání
@@ -159,10 +159,10 @@ Hotové přenosné binárky jsou ke stažení v
 [releasu ConsolePi+ v1.9.0](https://github.com/jiriflos-eng/ConsolePi-Plus/releases/tag/v1.9.0):
 pro macOS (Apple Silicon i Intel), Windows x64 a Linux (x64 i ARM64).
 Soubor `consolepi-discover-v1.9.0.sha256` slouží k ověření stažených binárek.
-ZIP pro macOS i Windows obsahuje složku `ConsolePi Discovery` a spouštěč
+ZIP pro macOS i Windows obsahuje složku `ConsolePi Plus Discovery` a spouštěč
 přibalené aplikace. Po ověření checksumu v macOS spusťte
-`Spustit ConsolePi Discovery.command`; ve Windows použijte
-`Spustit ConsolePi Discovery.cmd` a případně postupujte podle SmartScreen.
+`Spustit ConsolePi Plus Discovery.command`; ve Windows použijte
+`Spustit ConsolePi Plus Discovery.cmd` a případně postupujte podle SmartScreen.
 
 Samostatné binárky pro macOS, Windows a Linux vytvoří Go 1.22+ příkazem:
 
@@ -176,10 +176,10 @@ Parametr `--shell` vypíše nálezy do terminálu; úplnou nápovědu zobrazí
 
 ## Monitoring v Zabbixu
 
-ConsolePi poskytuje metriky pouze pro čtení přes SNMPv3 `authPriv`. Připravená
+ConsolePi+ poskytuje metriky pouze pro čtení přes SNMPv3 `authPriv`. Připravená
 [šablona pro Zabbix 7.4](zabbix/template_consolepi_snmpv3_7.4.yaml) sleduje
 CPU, teplotu, paměť, kořenový oddíl, uptime, dostupné aktualizace a požadavek
-na restart, ethernetový link, požadované služby ConsolePi a stavy čtyř
+na restart, ethernetový link, požadované služby ConsolePi+ a stavy čtyř
 sériových konzolí. Postup importu je v [návodu pro Zabbix](zabbix/README.md).
 Před aktivací SNMPv3 přidejte server nebo proxy Zabbixu do **Síť → Povolené
 zdroje přístupu**; UDP/161 není povolen mimo tento allowlist.

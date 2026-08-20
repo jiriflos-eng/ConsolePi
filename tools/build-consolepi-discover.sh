@@ -1,5 +1,5 @@
 #!/bin/sh
-# Build standalone ConsolePi discovery clients for administrator workstations.
+# Build standalone ConsolePi Plus discovery clients for administrator workstations.
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
@@ -28,7 +28,7 @@ for target in darwin/amd64 darwin/arm64 linux/amd64 linux/arm64 windows/amd64; d
 done
 
 if [ "$(uname -s)" = Darwin ] && command -v lipo >/dev/null 2>&1 && command -v ditto >/dev/null 2>&1 && command -v sips >/dev/null 2>&1; then
-    mac_app="$OUTPUT/ConsolePi Discovery.app"
+    mac_app="$OUTPUT/ConsolePi Plus Discovery.app"
     icon_work=$(mktemp -d "$OUTPUT/.consolepi-discover-icon.XXXXXX")
     iconset="$icon_work/ConsolePiDiscovery.iconset"
     windows_resource="$SOURCE/consolepi-discovery_windows_amd64.syso"
@@ -56,19 +56,19 @@ if [ "$(uname -s)" = Darwin ] && command -v lipo >/dev/null 2>&1 && command -v d
     lipo -create \
         "$OUTPUT/consolepi-discover-darwin-amd64" \
         "$OUTPUT/consolepi-discover-darwin-arm64" \
-        -output "$mac_app/Contents/MacOS/ConsolePi Discovery"
-    chmod 0755 "$mac_app/Contents/MacOS/ConsolePi Discovery"
+        -output "$mac_app/Contents/MacOS/ConsolePi Plus Discovery"
+    chmod 0755 "$mac_app/Contents/MacOS/ConsolePi Plus Discovery"
     go run "$ROOT/tools/consolepi-discover-iconpack.go" "$iconset" \
         "$mac_app/Contents/Resources/ConsolePiDiscovery.icns" \
-        "$OUTPUT/ConsolePi-Discovery.ico" "$windows_resource"
+        "$OUTPUT/ConsolePi-Plus-Discovery.ico" "$windows_resource"
     printf '%s\n' \
         '<?xml version="1.0" encoding="UTF-8"?>' \
         '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">' \
         '<plist version="1.0"><dict>' \
-        '<key>CFBundleName</key><string>ConsolePi Discovery</string>' \
-        '<key>CFBundleDisplayName</key><string>ConsolePi Discovery</string>' \
+        '<key>CFBundleName</key><string>ConsolePi Plus Discovery</string>' \
+        '<key>CFBundleDisplayName</key><string>ConsolePi Plus Discovery</string>' \
         '<key>CFBundleIdentifier</key><string>cz.consolepi.discovery</string>' \
-        '<key>CFBundleExecutable</key><string>ConsolePi Discovery</string>' \
+        '<key>CFBundleExecutable</key><string>ConsolePi Plus Discovery</string>' \
         '<key>CFBundleIconFile</key><string>ConsolePiDiscovery</string>' \
         '<key>CFBundlePackageType</key><string>APPL</string>' \
         '<key>LSUIElement</key><true/>' \
@@ -85,15 +85,15 @@ if [ "$(uname -s)" = Darwin ] && command -v lipo >/dev/null 2>&1 && command -v d
         codesign --force --sign - "$mac_app" >/dev/null
         codesign --verify --verbose "$mac_app" >/dev/null
     fi
-    mac_package="$icon_work/ConsolePi Discovery"
+    mac_package="$icon_work/ConsolePi Plus Discovery"
     mkdir -p "$mac_package"
-    cp -R "$mac_app" "$mac_package/ConsolePi Discovery.app"
+    cp -R "$mac_app" "$mac_package/ConsolePi Plus Discovery.app"
     printf '%s\n' \
         '#!/bin/bash' \
         'set -euo pipefail' \
         '' \
         'SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"' \
-        'APP="$SCRIPT_DIR/ConsolePi Discovery.app"' \
+        'APP="$SCRIPT_DIR/ConsolePi Plus Discovery.app"' \
         '' \
         'if [[ ! -d "$APP" ]]; then' \
         '    echo "Nenalezena aplikace: $APP" >&2' \
@@ -103,26 +103,26 @@ if [ "$(uname -s)" = Darwin ] && command -v lipo >/dev/null 2>&1 && command -v d
         '# Týká se výhradně přibalené aplikace v tomto adresáři.' \
         'xattr -dr com.apple.quarantine "$APP"' \
         'open "$APP"' \
-        > "$mac_package/Spustit ConsolePi Discovery.command"
-    chmod 0755 "$mac_package/Spustit ConsolePi Discovery.command"
+        > "$mac_package/Spustit ConsolePi Plus Discovery.command"
+    chmod 0755 "$mac_package/Spustit ConsolePi Plus Discovery.command"
     if ! command -v zip >/dev/null 2>&1; then
         echo "zip is required to build the macOS desktop package" >&2
         exit 1
     fi
     # Start from a new archive.  COPYFILE_DISABLE and -X keep AppleDouble
     # files out of the ZIP; those files would invalidate the ad-hoc signature.
-    rm -f "$OUTPUT/ConsolePi-Discovery-macOS-universal.zip"
+    rm -f "$OUTPUT/ConsolePi-Plus-Discovery-macOS-universal.zip"
     (
         cd "$icon_work"
-        COPYFILE_DISABLE=1 zip -X -q -r "$OUTPUT/ConsolePi-Discovery-macOS-universal.zip" \
-            'ConsolePi Discovery'
+        COPYFILE_DISABLE=1 zip -X -q -r "$OUTPUT/ConsolePi-Plus-Discovery-macOS-universal.zip" \
+            'ConsolePi Plus Discovery'
     )
 fi
 
 # Desktop packages are GUI-first: double-clicking opens the local discovery
 # page in the default browser.  Keep the architecture-specific command-line
 # binaries above as well, for --shell and automation use.
-windows_gui="$OUTPUT/ConsolePi-Discovery.exe"
+windows_gui="$OUTPUT/ConsolePi-Plus-Discovery.exe"
 printf 'Building %s\n' "$(basename "$windows_gui")"
 (
     cd "$SOURCE"
@@ -132,19 +132,19 @@ printf 'Building %s\n' "$(basename "$windows_gui")"
 
 if command -v zip >/dev/null 2>&1; then
     windows_work=$(mktemp -d "$OUTPUT/.consolepi-discover-windows.XXXXXX")
-    windows_package="$windows_work/ConsolePi Discovery"
+    windows_package="$windows_work/ConsolePi Plus Discovery"
     mkdir -p "$windows_package"
-    cp "$windows_gui" "$windows_package/ConsolePi Discovery.exe"
-    cp "$OUTPUT/ConsolePi-Discovery.ico" "$windows_package/ConsolePi Discovery.ico"
+    cp "$windows_gui" "$windows_package/ConsolePi Plus Discovery.exe"
+    cp "$OUTPUT/ConsolePi-Plus-Discovery.ico" "$windows_package/ConsolePi Plus Discovery.ico"
     printf '%s\r\n' \
         '@echo off' \
         'setlocal' \
-        'start "" "%~dp0ConsolePi Discovery.exe"' \
-        > "$windows_package/Spustit ConsolePi Discovery.cmd"
+        'start "" "%~dp0ConsolePi Plus Discovery.exe"' \
+        > "$windows_package/Spustit ConsolePi Plus Discovery.cmd"
     (
         cd "$windows_work"
-        rm -f "$OUTPUT/ConsolePi-Discovery-Windows-x64.zip"
-        zip -q -r "$OUTPUT/ConsolePi-Discovery-Windows-x64.zip" 'ConsolePi Discovery'
+        rm -f "$OUTPUT/ConsolePi-Plus-Discovery-Windows-x64.zip"
+        zip -q -r "$OUTPUT/ConsolePi-Plus-Discovery-Windows-x64.zip" 'ConsolePi Plus Discovery'
     )
     rm -rf "$windows_work"
 fi
@@ -158,10 +158,10 @@ if command -v shasum >/dev/null 2>&1; then
             consolepi-discover-linux-amd64 \
             consolepi-discover-linux-arm64 \
             consolepi-discover-windows-amd64.exe \
-            ConsolePi-Discovery.exe \
-            ConsolePi-Discovery.ico \
-            ConsolePi-Discovery-macOS-universal.zip \
-            ConsolePi-Discovery-Windows-x64.zip \
+            ConsolePi-Plus-Discovery.exe \
+            ConsolePi-Plus-Discovery.ico \
+            ConsolePi-Plus-Discovery-macOS-universal.zip \
+            ConsolePi-Plus-Discovery-Windows-x64.zip \
             > "consolepi-discover-v${VERSION}.sha256"
     )
 fi

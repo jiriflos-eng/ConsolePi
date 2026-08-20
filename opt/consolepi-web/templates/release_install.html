@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-{% block title %}Instalace aktualizace · ConsolePi{% endblock %}
+{% block title %}Instalace aktualizace · ConsolePi+{% endblock %}
 {% block content %}
 <section class="release-progress-page">
   <div class="brand brand-with-logo release-progress-brand">{% include "_brand.html" %}</div>
   <div class="release-progress-card" data-release-progress>
     <span class="release-progress-spinner" aria-hidden="true"></span>
-    <small>Aktualizace ConsolePi</small>
+    <small>Aktualizace ConsolePi+</small>
     <h1 data-release-title>Spouštím instalaci…</h1>
     <p data-release-message>{{ status.message }}</p>
     <div class="release-progress-track"><span data-release-bar></span></div>
@@ -18,7 +18,7 @@
   const labels = {
     verifying: ["Ověřuji aktualizaci", 22],
     installing: ["Instaluji aktualizaci", 65],
-    rebooting: ["Restartuji ConsolePi", 92],
+    rebooting: ["Restartuji ConsolePi+", 92],
     completed: ["Aktualizace dokončena", 100],
     failed: ["Instalace se nezdařila", 100]
   };
@@ -59,7 +59,7 @@
       render(await response.json());
     } catch (_) {
       retry += 1;
-      message.textContent = "ConsolePi se restartuje; čekám na obnovení spojení…";
+      message.textContent = "ConsolePi+ se restartuje; čekám na obnovení spojení…";
       if (retry > 2) hint.textContent = "Nechte tuto stránku otevřenou. Po návratu zařízení se stav automaticky obnoví.";
     }
     setTimeout(poll, 2000);

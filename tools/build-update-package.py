@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Build a signed, offline ConsolePi update package.
+"""Build a signed, offline ConsolePi Plus update package.
 
 The private Ed25519 key is deliberately supplied from outside the package.
-Only the matching public key is installed on ConsolePi.
+Only the matching public key is installed on ConsolePi Plus.
 """
 import argparse
 import hashlib
@@ -36,7 +36,7 @@ def add_tree(archive: tarfile.TarFile, root: Path) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Vytvoří podepsaný aktualizační balíček ConsolePi.")
+    parser = argparse.ArgumentParser(description="Vytvoří podepsaný aktualizační balíček ConsolePi Plus.")
     parser.add_argument("--private-key", type=Path, required=True, help="Ed25519 PEM pouze na administračním počítači")
     parser.add_argument("--output", type=Path, help="Výstupní .cpiupdate soubor")
     args = parser.parse_args()
@@ -69,7 +69,7 @@ def main() -> None:
         if signed.returncode:
             raise SystemExit(signed.stderr.strip() or "Podpis aktualizace selhal.")
         signature = Path(str(manifest_path) + ".sig").read_bytes()
-    output = args.output or root.parent / f"ConsolePi-{version}.cpiupdate"
+    output = args.output or root.parent / f"ConsolePi-Plus-{version}.cpiupdate"
     with tarfile.open(output, mode="w:gz") as archive:
         for name, content in (("manifest.json", manifest_bytes), ("signature.sshsig", signature), ("payload.tar.gz", payload_bytes)):
             info = tarfile.TarInfo(name)

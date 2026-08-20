@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Autentizace · ConsolePi{% endblock %}
+{% block title %}Autentizace · ConsolePi+{% endblock %}
 {% block content %}
 {% set active_page = "authentication" %}
 {% include "_navigation.html" %}
@@ -112,7 +112,7 @@
             </select>
           </label>
         </div>
-        <p class="hint">Při uložení v režimu RADIUS ConsolePi automaticky ověří každý nastavený server náhodným neplatným účtem. Očekávaný Access-Reject potvrzuje dostupnost i správný shared secret; při chybě se konfigurace neuloží.</p>
+        <p class="hint">Při uložení v režimu RADIUS ConsolePi+ automaticky ověří každý nastavený server náhodným neplatným účtem. Očekávaný Access-Reject potvrzuje dostupnost i správný shared secret; při chybě se konfigurace neuloží.</p>
       </div>
       <button type="submit">Uložit autentizaci</button>
     </form>

@@ -10,7 +10,7 @@ export COPYFILE_DISABLE
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 VERSION=$(tr -d '[:space:]' <"$ROOT/VERSION")
 OUTPUT_DIR=${1:-"$ROOT/dist-public"}
-ARCHIVE="$OUTPUT_DIR/ConsolePi-${VERSION}-source.tar.gz"
+ARCHIVE="$OUTPUT_DIR/ConsolePi-Plus-${VERSION}-source.tar.gz"
 CHECKSUM="$ARCHIVE.sha256"
 
 [ -n "$VERSION" ] || { printf '%s\n' 'VERSION is missing.' >&2; exit 1; }

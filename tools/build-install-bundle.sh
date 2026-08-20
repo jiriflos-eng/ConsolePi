@@ -12,7 +12,7 @@ export COPYFILE_DISABLE
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 VERSION=$(tr -d '[:space:]' <"$ROOT/VERSION")
 OUTPUT_DIR=${1:-"$ROOT/dist"}
-NAME="ConsolePi-${VERSION}-install"
+NAME="ConsolePi-Plus-${VERSION}-install"
 ARCHIVE="$OUTPUT_DIR/${NAME}.tar.gz"
 CHECKSUM="$ARCHIVE.sha256"
 

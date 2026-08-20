@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Nápověda · ConsolePi{% endblock %}
+{% block title %}Nápověda · ConsolePi+{% endblock %}
 {% block content %}
 {% set active_page = "help" %}
 {% include "_navigation.html" %}
@@ -15,7 +15,7 @@
     <a href="#terminal">6. Terminál</a>
     <a href="#connect">7. Připojení</a>
     <a href="#securecrt-logging">Logování v SecureCRT</a>
-    <a href="#logging">Logování na ConsolePi</a>
+    <a href="#logging">Logování na ConsolePi+</a>
     <a href="#network-change">Bezpečná změna sítě</a>
     <a href="#access-sources">Povolené zdroje přístupu</a>
     <a href="#generic-firstboot">Generic image · první spuštění</a>
@@ -29,7 +29,7 @@
   <article class="help-content">
     <section class="help-intro">
       <h1><span class="heading-illustration help" aria-hidden="true"></span>Připojení ke konzolovému kabelu ze SecureCRT</h1>
-      <p>Každý USB kabel má vlastní SSH port. SecureCRT se připojuje technickým účtem <code>console</code> a ConsolePi automaticky otevře správnou sériovou konzoli. Aktivní autentizace: <strong>{{ {"local_key": "uživatel + lokální SSH klíč", "local_password": "uživatel + lokální heslo", "radius": "RADIUS / Keyboard Interactive"}[auth.mode] }}</strong>.</p>
+      <p>Každý USB kabel má vlastní SSH port. SecureCRT se připojuje technickým účtem <code>console</code> a ConsolePi+ automaticky otevře správnou sériovou konzoli. Aktivní autentizace: <strong>{{ {"local_key": "uživatel + lokální SSH klíč", "local_password": "uživatel + lokální heslo", "radius": "RADIUS / Keyboard Interactive"}[auth.mode] }}</strong>.</p>
     </section>
 
     <section id="new-session" class="help-step">
@@ -41,7 +41,7 @@
       <span class="step-number">2</span>
       <div>
         <h2>Zadejte IP adresu a port</h2>
-        <p>Hostname je aktuální adresa ConsolePi: <code>{{ network.address }}</code>. Port vyberte podle kabelu:</p>
+        <p>Hostname je aktuální adresa ConsolePi+: <code>{{ network.address }}</code>. Port vyberte podle kabelu:</p>
         <div class="help-ports">
           {% for row in ports %}
           <div><span class="cable-icon{% if not row.connected %} disconnected{% endif %}">{{ "⌁" if row.connected else "⊘" }}</span><strong>{{ row.display_name }}</strong><code>{{ network.address }}:{{ row.port }}</code><span class="badge {{ "ready" if row.connected else "offline" }}">{{ "Připojen" if row.connected else "Offline" }}</span></div>
@@ -59,18 +59,18 @@
       <span class="step-number">4</span>
       <div>
         <h2>Vyberte správnou metodu autentizace</h2>
-        <p>Režim se nastavuje v <strong>ConsolePi → Autentizace</strong> a platí pro všechny konzolové SSH porty. V SecureCRT vždy zůstává SSH username <code>console</code>; liší se pouze níže vybraná metoda.</p>
+        <p>Režim se nastavuje v <strong>ConsolePi+ → Autentizace</strong> a platí pro všechny konzolové SSH porty. V SecureCRT vždy zůstává SSH username <code>console</code>; liší se pouze níže vybraná metoda.</p>
         <dl>
           <dt id="auth-local-password">Lokální heslo pro účet <code>console</code></dt>
-          <dd>V <strong>Session Options → SSH2 → Authentication</strong> povolte pouze <strong>Password</strong>. Při spojení zadejte heslo účtu <code>console</code>, které nastavil správce ConsolePi. Nepovolujte PublicKey ani Keyboard Interactive.</dd>
+          <dd>V <strong>Session Options → SSH2 → Authentication</strong> povolte pouze <strong>Password</strong>. Při spojení zadejte heslo účtu <code>console</code>, které nastavil správce ConsolePi+. Nepovolujte PublicKey ani Keyboard Interactive.</dd>
           <dd class="help-auth-shot"><a href="{{ url_for('static', filename='help/securecrt-password.png') }}" target="_blank" rel="noopener"><img src="{{ url_for('static', filename='help/securecrt-password.png') }}" alt="SecureCRT: pro lokální heslo je povolena pouze metoda Password" loading="lazy"><span>Ukázka nastavení Password · otevřít v plné velikosti</span></a></dd>
           <dt id="auth-local-key">SSH klíč pro účet <code>console</code></dt>
-          <dd>Povolte pouze <strong>PublicKey</strong> a v jeho Properties vyberte privátní soubor vytvořený v ConsolePi. Do pole Username patří stále <code>console</code>; soubor s příponou <code>.pub</code> se nepoužívá.</dd>
+          <dd>Povolte pouze <strong>PublicKey</strong> a v jeho Properties vyberte privátní soubor vytvořený v ConsolePi+. Do pole Username patří stále <code>console</code>; soubor s příponou <code>.pub</code> se nepoužívá.</dd>
           <dd class="help-auth-shot"><a href="{{ url_for('static', filename='help/securecrt-publickey.png') }}" target="_blank" rel="noopener"><img src="{{ url_for('static', filename='help/securecrt-publickey.png') }}" alt="SecureCRT: pro přístup SSH klíčem je povolena pouze metoda PublicKey" loading="lazy"><span>Ukázka nastavení PublicKey · otevřít v plné velikosti</span></a></dd>
-          <dd class="help-key-steps"><strong>Vytvoření osobního klíče:</strong><ol><li>V ConsolePi otevřete <a href="{{ url_for('keys_page') }}">Přístupové klíče</a> a zvolte vytvoření klíče.</li><li>Zadejte popisné jméno osoby nebo počítače; ochranná fráze je doporučená.</li><li>ConsolePi uloží pouze <strong>veřejný klíč</strong>, který dovolí přístup účtu <code>console</code>.</li><li><strong>Privátní klíč</strong> se nabídne k jednorázovému stažení do počítače. Uložte jej do chráněné složky; ConsolePi jej později neumí znovu zobrazit ani stáhnout.</li><li>V SecureCRT otevřete <strong>Session Options → SSH2 → Authentication → PublicKey → Properties</strong>, zvolte <strong>Use session public key setting</strong> a <strong>Use identity or certificate file</strong>. Potom vyberte stažený privátní soubor.</li></ol></dd>
+          <dd class="help-key-steps"><strong>Vytvoření osobního klíče:</strong><ol><li>V ConsolePi+ otevřete <a href="{{ url_for('keys_page') }}">Přístupové klíče</a> a zvolte vytvoření klíče.</li><li>Zadejte popisné jméno osoby nebo počítače; ochranná fráze je doporučená.</li><li>ConsolePi+ uloží pouze <strong>veřejný klíč</strong>, který dovolí přístup účtu <code>console</code>.</li><li><strong>Privátní klíč</strong> se nabídne k jednorázovému stažení do počítače. Uložte jej do chráněné složky; ConsolePi+ jej později neumí znovu zobrazit ani stáhnout.</li><li>V SecureCRT otevřete <strong>Session Options → SSH2 → Authentication → PublicKey → Properties</strong>, zvolte <strong>Use session public key setting</strong> a <strong>Use identity or certificate file</strong>. Potom vyberte stažený privátní soubor.</li></ol></dd>
           <dd class="help-auth-shot"><a href="{{ url_for('static', filename='help/securecrt-publickey-properties.png') }}" target="_blank" rel="noopener"><img src="{{ url_for('static', filename='help/securecrt-publickey-properties.png') }}" alt="SecureCRT Public Key Properties s vybraným souborem privátního SSH klíče" loading="lazy"><span>Výběr souboru privátního klíče v SecureCRT · otevřít v plné velikosti</span></a></dd>
           <dt id="auth-radius">RADIUS – osobní uživatel a heslo</dt>
-          <dd>Povolte pouze <strong>Keyboard Interactive</strong>. SecureCRT nejprve otevře SSH jako <code>console</code>, pak se zeptá na <strong>RADIUS uživatel</strong> a jeho heslo. Tyto osobní údaje se na ConsolePi neukládají.</dd>
+          <dd>Povolte pouze <strong>Keyboard Interactive</strong>. SecureCRT nejprve otevře SSH jako <code>console</code>, pak se zeptá na <strong>RADIUS uživatel</strong> a jeho heslo. Tyto osobní údaje se na ConsolePi+ neukládají.</dd>
           <dd class="help-auth-shot"><a href="{{ url_for('static', filename='help/securecrt-radius.png') }}" target="_blank" rel="noopener"><img src="{{ url_for('static', filename='help/securecrt-radius.png') }}" alt="SecureCRT: pro RADIUS je povolena pouze metoda Keyboard Interactive" loading="lazy"><span>Ukázka nastavení Keyboard Interactive · otevřít v plné velikosti</span></a></dd>
         </dl>
         <p class="security-note"><strong>Vždy zvolte pouze jednu metodu.</strong> Kombinace PublicKey + Password nebo PublicKey + Keyboard Interactive pro konzolové porty nefunguje a není vyžadována. Port 22 pro správu Raspberry Pi je samostatný a jeho pravidla se tím nemění.</p>
@@ -88,7 +88,7 @@
           <li>Po připojení zadejte do výzvy <strong>RADIUS uživatel</strong> své osobní jméno.</li>
           <li>Do výzvy <strong>Password</strong> zadejte své RADIUS heslo.</li>
         </ol>
-        <p class="security-note">RADIUS jméno ani heslo se na ConsolePi neukládá. Při nedostupnosti obou serverů se konzole neotevře.</p>
+        <p class="security-note">RADIUS jméno ani heslo se na ConsolePi+ neukládá. Při nedostupnosti obou serverů se konzole neotevře.</p>
         {% elif auth.mode == "local_password" %}
         <h2>Nastavte přihlášení heslem</h2>
         <ol>
@@ -108,7 +108,7 @@
           <li>Tlačítkem <strong>…</strong> vyberte soubor <code>consolepi-admin</code>. Nevybírejte <code>consolepi-admin.pub</code>.</li>
         </ol>
         <img class="help-image" src="{{ url_for('static', filename='securecrt-public-key-properties.png') }}" alt="Okno Public Key Properties v SecureCRT s polem pro výběr identity file">
-        <p class="security-note"><strong>Privátní klíč je tajný.</strong> ConsolePi jej po stažení neuchovává. Neposílejte jej e-mailem a neukládejte jej na veřejné úložiště. Při ztrátě vytvořte na stránce Přístupové klíče nový a starý odeberte.</p>
+        <p class="security-note"><strong>Privátní klíč je tajný.</strong> ConsolePi+ jej po stažení neuchovává. Neposílejte jej e-mailem a neukládejte jej na veřejné úložiště. Při ztrátě vytvořte na stránce Přístupové klíče nový a starý odeberte.</p>
         <h3>Zapomenuté heslo webu</h3>
         <p>Přihlaste se administrativním SSH jako <code>consolepi</code> na port 22 a v terminálovém menu zvolte <strong>Obnovit heslo webové administrace</strong>. Ze shellu lze stejnou bezpečnou obnovu spustit příkazem <code>sudo consolepi-reset-web-password</code>. Staré webové heslo není potřeba; oprávnění je ověřeno administrativním SSH účtem a pomocí <code>sudo</code>.</p>
         {% endif %}
@@ -134,7 +134,7 @@
       <span class="step-number">C</span>
       <div>
         <h2>Logování relace v SecureCRT</h2>
-        <p>Log SecureCRT se ukládá na váš počítač, tedy nezávisle na logování ConsolePi. Je vhodný pro osobní pracovní záznam konkrétní relace.</p>
+        <p>Log SecureCRT se ukládá na váš počítač, tedy nezávisle na logování ConsolePi+. Je vhodný pro osobní pracovní záznam konkrétní relace.</p>
         <ol>
           <li>Uložte relaci SecureCRT a otevřete <strong>Session Options → Terminal → Log File</strong>.</li>
           <li>Do <strong>Log file name</strong> zadejte cestu v existující složce. Na macOS například: <code>/Users/&lt;uživatel&gt;/Documents/ConsolePi-logs/%S-%H-%P-%Y%M%D-%h%m%s.txt</code>.</li>
@@ -143,14 +143,14 @@
           <li>V <strong>Session Options → Connection → Logon Actions</strong> nechte vypnuté <strong>Display logon prompts in terminal window</strong>. U SSH tak SecureCRT začne zapisovat až po úspěšném přihlášení, nikoli během zadávání RADIUS hesla.</li>
         </ol>
         <p>Pro jednorázové ruční spuštění nebo ukončení záznamu použijte v hlavním menu SecureCRT položku <strong>File → Log Session</strong>.</p>
-        <p class="security-note"><strong>Chraňte klientské logy.</strong> Cisco zařízení může zpětně vypsat konfiguraci, tajné údaje nebo zadané příkazy. Ukládejte záznamy do chráněné složky, nesdílejte je e-mailem a po vyřešení práce je smažte. Pro běžný provoz je bezpečnější logování pouze událostí na ConsolePi.</p>
+        <p class="security-note"><strong>Chraňte klientské logy.</strong> Cisco zařízení může zpětně vypsat konfiguraci, tajné údaje nebo zadané příkazy. Ukládejte záznamy do chráněné složky, nesdílejte je e-mailem a po vyřešení práce je smažte. Pro běžný provoz je bezpečnější logování pouze událostí na ConsolePi+.</p>
       </div>
     </section>
 
     <section id="logging" class="help-step">
       <span class="step-number">L</span>
       <div>
-        <h2>Logování na ConsolePi a ochrana citlivých údajů</h2>
+        <h2>Logování na ConsolePi+ a ochrana citlivých údajů</h2>
         <p>V nabídce <strong>Systém → Logování konzolových portů</strong> lze vybrat jednu ze tří úrovní:</p>
         <dl>
           <dt>Pouze události</dt>
@@ -179,7 +179,7 @@
       <div>
         <h2>APT repozitáře a lokální mirror</h2>
         <p>V <strong>Síť → APT repozitáře</strong> ponechte <strong>Oficiální Debian a Raspberry Pi repozitáře</strong>, pokud zařízení může aktualizace stahovat přímo nebo přes proxy.</p>
-        <p>Pro síť bez internetu zvolte <strong>Vlastní lokální mirror</strong> a zadejte tři HTTP/HTTPS adresy: Debian, Debian Security a Raspberry Pi. ConsolePi nejprve ověří všechny zdroje odděleným stažením indexů; při selhání původní konfiguraci nezmění.</p>
+        <p>Pro síť bez internetu zvolte <strong>Vlastní lokální mirror</strong> a zadejte tři HTTP/HTTPS adresy: Debian, Debian Security a Raspberry Pi. ConsolePi+ nejprve ověří všechny zdroje odděleným stažením indexů; při selhání původní konfiguraci nezmění.</p>
         <p>Stejná volba je dostupná i v terminálovém administračním menu jako <strong>APT repozitáře (oficiální / lokální mirror)</strong>. Proxy a mirror jsou nezávislé volby. Proxy případně nastavte samostatně v předchozí části. Při přípravě generic image se vždy obnoví oficiální zdroje a odstraní se proxy i další lokální APT zdroje.</p>
       </div>
     </section>
@@ -188,14 +188,14 @@
       <span class="step-number">F</span>
       <div>
         <h2>Povolené zdroje přístupu</h2>
-        <p>V nabídce <strong>Síť → Povolené zdroje přístupu</strong> se spravuje firewall ConsolePi. Stejný seznam lze přidávat a odebírat také z terminálového administračního menu volbou <strong>Povolené management sítě (firewall)</strong>, například ještě před změnou IP adresy do jiné sítě. Pravidla platí současně pro webovou administraci HTTPS, administrativní SSH na portu 22 i konzolové SSH porty 2201–2204.</p>
+        <p>V nabídce <strong>Síť → Povolené zdroje přístupu</strong> se spravuje firewall ConsolePi+. Stejný seznam lze přidávat a odebírat také z terminálového administračního menu volbou <strong>Povolené management sítě (firewall)</strong>, například ještě před změnou IP adresy do jiné sítě. Pravidla platí současně pro webovou administraci HTTPS, administrativní SSH na portu 22 i konzolové SSH porty 2201–2204.</p>
         <p>Řádek <strong>Lokální Ethernet</strong> je automatický a nelze jej upravit ani odstranit. Po změně IPv4 nastavení se sám přepíše na aktuální přímo připojenou síť, například <code>10.176.122.0/24</code>.</p>
         <ol>
           <li>Zadejte vlastní popis, například <strong>Správní VPN</strong> nebo <strong>NOC</strong>.</li>
           <li>Zadejte jednu IPv4 adresu, například <code>10.247.227.8</code>, nebo celou síť v CIDR zápisu, například <code>10.247.0.0/16</code>.</li>
           <li>Potvrďte tlačítkem <strong>Povolit zdroj</strong>. Všechny zdroje, které nejsou v tabulce, firewall odmítne.</li>
         </ol>
-        <p>Hodnota <code>0.0.0.0/0</code> je podporovaná, ale otevře ConsolePi pro celý IPv4 internet. Proto je nutné navíc do potvrzovacího pole napsat přesně <code>POVOLIT VŠEM</code>. Používejte ji jen ve výjimečném, vědomě zabezpečeném nasazení.</p>
+        <p>Hodnota <code>0.0.0.0/0</code> je podporovaná, ale otevře ConsolePi+ pro celý IPv4 internet. Proto je nutné navíc do potvrzovacího pole napsat přesně <code>POVOLIT VŠEM</code>. Používejte ji jen ve výjimečném, vědomě zabezpečeném nasazení.</p>
         <p class="security-note">Před odstraněním vlastního zdroje ověřte, že stále zůstáváte v automatické lokální síti nebo máte jinou povolenou cestu. Jinak se k zařízení vzdáleně nepřipojíte.</p>
       </div>
     </section>
@@ -209,7 +209,7 @@
           <li>Pokud nová adresa patří do jiné sítě, přesuňte do ní také administrátorský počítač nebo upravte jeho síťové připojení.</li>
           <li>V prohlížeči otevřete <code>https://NOVÁ-IP/admin?tab=network</code> a znovu se přihlaste.</li>
           <li>Po skutečném připojení rozhraní se zobrazí blok <strong>Nepotvrzená změna</strong> s odpočtem a tlačítkem <strong>Potvrdit nové síťové nastavení</strong>.</li>
-          <li>Potvrďte ji do 180 sekund. Pokud čas vyprší, ConsolePi automaticky vrátí původní síťový profil i firewall; prohlížeč se poté pokusí otevřít původní adresu.</li>
+          <li>Potvrďte ji do 180 sekund. Pokud čas vyprší, ConsolePi+ automaticky vrátí původní síťový profil i firewall; prohlížeč se poté pokusí otevřít původní adresu.</li>
         </ol>
         <p>Potvrzení v terminálovém administračním menu je záložní možnost. Výzva se ukazuje pouze po aktivaci nové konfigurace, ne během její přípravy.</p>
         <p class="security-note">Před změnou do jiné sítě ji podle potřeby přidejte do seznamu povolených zdrojů přístupu. Jinak vás firewall může po úspěšné změně adresy správně odmítnout.</p>
@@ -220,12 +220,12 @@
       <span class="step-number">G</span>
       <div>
         <h2>Generic image a první spuštění</h2>
-        <p>Generic image vybírejte v Raspberry Pi Imageru z repozitáře ConsolePi. V OS Customisation ponechte účet <code>consolepi</code>, nastavte pouze jeden veřejný klíč typu <code>ssh-ed25519</code> a nenastavujte heslo ani jiné změny uživatele, hostname nebo Wi-Fi.</p>
+        <p>Generic image vybírejte v Raspberry Pi Imageru z repozitáře ConsolePi+. V OS Customisation ponechte účet <code>consolepi</code>, nastavte pouze jeden veřejný klíč typu <code>ssh-ed25519</code> a nenastavujte heslo ani jiné změny uživatele, hostname nebo Wi-Fi.</p>
         <p>Při prvním spuštění je do dokončení webového průvodce dočasně povolen přístup na porty SSH 22 a HTTP/HTTPS 80/443 z IPv4 adres. Je to pouze instalační režim; po dokončení průvodce se veřejný přístup uzavře.</p>
         <ol>
-          <li>Otevřete web ConsolePi na adrese získané z DHCP nebo nastavené v síti.</li>
+          <li>Otevřete web ConsolePi+ na adrese získané z DHCP nebo nastavené v síti.</li>
           <li>V průvodci vyplňte identitu zařízení, heslo webové administrace a jednu nebo více management IPv4 sítí. Sítě lze oddělit čárkou nebo mezerou; alespoň jedna musí obsahovat adresu použitého prohlížeče.</li>
-          <li>Po dokončení jsou SSH, web a konzolové porty omezeny na uložené management sítě. Uchovejte si použitý administrativní privátní SSH klíč mimo ConsolePi.</li>
+          <li>Po dokončení jsou SSH, web a konzolové porty omezeny na uložené management sítě. Uchovejte si použitý administrativní privátní SSH klíč mimo ConsolePi+.</li>
         </ol>
         <p class="security-note">Generic image neobsahuje privátní administrativní klíč, sdílené heslo ani identitu původního zařízení. Pokud Imager předá chybějící nebo neplatný klíč či jinou nepovolenou customizaci, provisioning skončí uzavřeně a vyžaduje lokální recovery postup.</p>
       </div>
@@ -235,9 +235,9 @@
       <span class="step-number">A</span>
       <div>
         <h2>Aktualizace systému</h2>
-        <p>ConsolePi kontroluje dostupné balíčky automaticky jednou denně. Stav, poslední kontrola a seznam dostupných balíčků jsou v nabídce <strong>Systém → Zařízení</strong>.</p>
+        <p>ConsolePi+ kontroluje dostupné balíčky automaticky jednou denně. Stav, poslední kontrola a seznam dostupných balíčků jsou v nabídce <strong>Systém → Zařízení</strong>.</p>
         <p>Tlačítko <strong>Zkontrolovat nyní</strong> obnoví seznam balíčků na pozadí. Instalace se nikdy nespouští automaticky; musí ji potvrdit správce textem <code>AKTUALIZOVAT</code>.</p>
-        <p class="security-note">Během instalace Raspberry Pi nevypínejte. ConsolePi používá bezpečnější <code>apt upgrade</code>, zachovává lokální konfigurační soubory a po dokončení oznámí, zda je nutný restart.</p>
+        <p class="security-note">Během instalace Raspberry Pi nevypínejte. ConsolePi+ používá bezpečnější <code>apt upgrade</code>, zachovává lokální konfigurační soubory a po dokončení oznámí, zda je nutný restart.</p>
       </div>
     </section>
 
@@ -255,7 +255,7 @@
           <dt>Klon SD karty</dt><dd>Na nové fyzické kartě se průvodce prvního spuštění spustí automaticky a vytvoří novou identitu, webové heslo, SSH hostitelské klíče a HTTPS certifikát. Ruční změna identity proto pro běžný klon není potřeba.</dd>
           <dt>Regenerace SSH a HTTPS identity</dt><dd>V nabídce Systém → Údržba ji použijte pouze při bezpečnostním incidentu nebo pokud potřebujete vyměnit SSH hostitelské klíče a HTTPS certifikát bez továrního resetu. Uložení názvu zařízení a hostname tuto akci nespouští.</dd>
         </dl>
-        <p class="security-note">Heslo šifrované zálohy ConsolePi nikde neukládá. Při jeho ztrátě nelze zálohu obnovit.</p>
+        <p class="security-note">Heslo šifrované zálohy ConsolePi+ nikde neukládá. Při jeho ztrátě nelze zálohu obnovit.</p>
       </div>
     </section>
 
@@ -265,7 +265,7 @@
         <h2>Řešení problémů</h2>
         <dl>
           <dt>Unable to authenticate</dt><dd>Ověřte username <code>console</code> a metodu odpovídající aktivnímu režimu: Password pro lokální heslo, PublicKey pro SSH klíč nebo Keyboard Interactive pro RADIUS. Nikdy nezapínejte několik metod najednou.</dd>
-          <dt>RADIUS se neověří</dt><dd>V ConsolePi otevřete Autentizace a znovu uložte konfiguraci. Při uložení se zobrazí úspěch, nebo konkrétní chyba spojení/secretu. Po změně NAS záznamu v daloRADIUS restartujte na RADIUS serveru službu <code>freeradius</code>, aby načetla nové nastavení klienta.</dd>
+          <dt>RADIUS se neověří</dt><dd>V ConsolePi+ otevřete Autentizace a znovu uložte konfiguraci. Při uložení se zobrazí úspěch, nebo konkrétní chyba spojení/secretu. Po změně NAS záznamu v daloRADIUS restartujte na RADIUS serveru službu <code>freeradius</code>, aby načetla nové nastavení klienta.</dd>
           <dt>SecureCRT nevytváří log</dt><dd>Ověřte, že cesta v Terminal → Log File existuje a je zapisovatelná, a že je zapnutá volba Start log upon connect. Pro ruční ovládání použijte File → Log Session.</dd>
           <dt>Je vyžadován terminál</dt><dd>Povolte v relaci SecureCRT požadavek na pseudo-terminal a použijte interaktivní SSH relaci.</dd>
           <dt>Konzole je obsazena</dt><dd>Ke stejnému kabelu je již připojen jiný uživatel. Počkejte na ukončení jeho relace.</dd>
