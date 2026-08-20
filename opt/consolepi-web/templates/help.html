@@ -20,6 +20,7 @@
     <a href="#access-sources">Povolené zdroje přístupu</a>
     <a href="#generic-firstboot">Generic image · první spuštění</a>
     <a href="#proxy">Přístup přes proxy</a>
+    <a href="#repositories">APT repozitáře</a>
     <a href="#updates">Aktualizace systému</a>
     <a href="#maintenance">Údržba, reset a klonování</a>
     <a href="#troubleshooting">Řešení problémů</a>
@@ -173,6 +174,15 @@
         <p class="security-note">Uložené heslo smí číst pouze uživatel root. Web zobrazuje jen informaci, že heslo existuje, nikdy jeho obsah.</p>
       </div>
     </section>
+    <section id="repositories" class="help-step">
+      <span class="step-number">R</span>
+      <div>
+        <h2>APT repozitáře a lokální mirror</h2>
+        <p>V <strong>Síť → APT repozitáře</strong> ponechte <strong>Oficiální Debian a Raspberry Pi repozitáře</strong>, pokud zařízení může aktualizace stahovat přímo nebo přes proxy.</p>
+        <p>Pro síť bez internetu zvolte <strong>Vlastní lokální mirror</strong> a zadejte tři HTTP/HTTPS adresy: Debian, Debian Security a Raspberry Pi. ConsolePi nejprve ověří všechny zdroje odděleným stažením indexů; při selhání původní konfiguraci nezmění.</p>
+        <p>Stejná volba je dostupná i v terminálovém administračním menu jako <strong>APT repozitáře (oficiální / lokální mirror)</strong>. Proxy a mirror jsou nezávislé volby. Proxy případně nastavte samostatně v předchozí části. Při přípravě generic image se vždy obnoví oficiální zdroje a odstraní se proxy i další lokální APT zdroje.</p>
+      </div>
+    </section>
 
     <section id="access-sources" class="help-step">
       <span class="step-number">F</span>
@@ -194,7 +204,7 @@
       <span class="step-number">N</span>
       <div>
         <h2>Bezpečná změna síťové konfigurace</h2>
-        <p>V nabídce <strong>Síť → Nastavení Ethernetu</strong> lze přepnout mezi DHCP a statickou IPv4 adresou. Po kontrole a odeslání se změna provede po krátké prodlevě, aby se dokončila odpověď prohlížeči.</p>
+        <p>V nabídce <strong>Síť → Ethernetové připojení</strong> lze přepnout mezi DHCP a statickou IPv4 adresou. Po kontrole a odeslání se změna provede po krátké prodlevě, aby se dokončila odpověď prohlížeči.</p>
         <ol>
           <li>Pokud nová adresa patří do jiné sítě, přesuňte do ní také administrátorský počítač nebo upravte jeho síťové připojení.</li>
           <li>V prohlížeči otevřete <code>https://NOVÁ-IP/admin?tab=network</code> a znovu se přihlaste.</li>

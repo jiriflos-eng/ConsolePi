@@ -250,7 +250,7 @@ zabbix_export:
               newvalue: Up
             - value: '2'
               newvalue: Down
-        - uuid: a60b401d9b64d88ab0f6b0aaf2cdc2d
+        - uuid: a60b401d9b64488ab0f6b0aaf2cdc2d0
           name: 'ConsolePi serial-console state'
           mappings:
             - value: '1'

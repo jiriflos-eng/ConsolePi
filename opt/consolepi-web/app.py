@@ -430,6 +430,25 @@ def proxy_status():
     return json.loads(result.stdout)
 
 
+def repositories_status():
+    result = command(
+        "sudo", "/usr/local/sbin/consolepi-control", "repositories", "status"
+    )
+    if result.returncode:
+        return {
+            "mode": "official", "codename": "bookworm", "debian_uri": "",
+            "security_uri": "", "raspberrypi_uri": "", "managed": False,
+        }
+    try:
+        return json.loads(result.stdout)
+    except json.JSONDecodeError:
+        APP.logger.error("APT repository status returned invalid JSON")
+        return {
+            "mode": "official", "codename": "bookworm", "debian_uri": "",
+            "security_uri": "", "raspberrypi_uri": "", "managed": False,
+        }
+
+
 def discovery_status():
     result = command(
         "sudo", "/usr/local/sbin/consolepi-control", "discovery", "status"
@@ -815,6 +834,7 @@ def admin_dashboard():
         network_change_pending=pending_state if pending_state.get("active") else None,
         access_sources=access_sources_status(),
         proxy=proxy_status(),
+        repositories=repositories_status(),
         discovery=discovery_status(),
         snmp=snmp_status(),
         storage=maintenance_status("storage"),
@@ -1814,6 +1834,30 @@ def network_proxy():
         "Nastavení proxy bylo uloženo a použije se při příští kontrole aktualizací."
         if result.returncode == 0
         else result.stderr.strip() or "Nastavení proxy selhalo.",
+        "success" if result.returncode == 0 else "error",
+    )
+    return redirect(url_for("admin_dashboard", tab="network"))
+
+
+@APP.post("/network/repositories")
+@authenticated
+def network_repositories():
+    if not csrf_valid():
+        return "Neplatný CSRF token.", 403
+    payload = {
+        "mode": request.form.get("mode", "official"),
+        "debian_uri": request.form.get("debian_uri", ""),
+        "security_uri": request.form.get("security_uri", ""),
+        "raspberrypi_uri": request.form.get("raspberrypi_uri", ""),
+    }
+    result = command(
+        "sudo", "/usr/local/sbin/consolepi-control", "repositories", "configure",
+        input_text=json.dumps(payload),
+    )
+    flash(
+        "APT repozitáře byly ověřeny a uloženy."
+        if result.returncode == 0
+        else result.stderr.strip() or "Ověření APT repozitářů selhalo.",
         "success" if result.returncode == 0 else "error",
     )
     return redirect(url_for("admin_dashboard", tab="network"))

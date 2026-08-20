@@ -1,0 +1,7 @@
+{
+  "mode": "official",
+  "codename": "bookworm",
+  "debian_uri": "http://deb.debian.org/debian",
+  "security_uri": "http://security.debian.org/debian-security",
+  "raspberrypi_uri": "http://archive.raspberrypi.com/debian"
+}

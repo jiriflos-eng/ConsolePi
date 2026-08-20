@@ -136,17 +136,27 @@ fi
 
 STARTED=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 log "OPEN user=$AUTH_IDENTITY auth=$AUTH_MODE client=$CLIENT_IP ssh_port=$PORT device=$DEVICE_NAME serial=$SERIAL_DEVICE"
-TRANSCRIPT_FIFO=
-WRITER_PID=
+TRANSCRIPT=
+
+finalize_picocom_transcript()
+{
+    # Picocom zapisuje přímo do .active souboru.  Po návratu z picocomu je
+    # descriptor už uzavřený; přejmenování v rámci stejného adresáře je tedy
+    # atomické. Prázdný soubor nevytváří falešný záznam relace.
+    [ -n "${TRANSCRIPT:-}" ] || return 0
+    if [ -s "$TRANSCRIPT" ]; then
+        mv -f "$TRANSCRIPT" "${TRANSCRIPT%.active}.log"
+    else
+        rm -f "$TRANSCRIPT"
+    fi
+    TRANSCRIPT=
+}
+
 cleanup()
 {
     rc=$?
     trap - EXIT HUP INT TERM
-    if [ -n "$WRITER_PID" ]; then
-        kill "$WRITER_PID" 2>/dev/null || true
-        wait "$WRITER_PID" 2>/dev/null || true
-    fi
-    [ -z "$TRANSCRIPT_FIFO" ] || rm -f "$TRANSCRIPT_FIFO"
+    finalize_picocom_transcript
     log "CLOSE user=$AUTH_IDENTITY auth=$AUTH_MODE client=$CLIENT_IP ssh_port=$PORT device=$DEVICE_NAME started=$STARTED rc=$rc"
     exit "$rc"
 }
@@ -241,26 +251,31 @@ if [ "$TRANSCRIPT_MODE" != "events" ] &&
     mkdir -p "$TRANSCRIPT_PORT_DIR"
     STAMP=$(date -u +%Y%m%dT%H%M%SZ)
     TRANSCRIPT=$TRANSCRIPT_PORT_DIR/${PORT}_${STAMP}_${CLIENT_IP}.active
-    TRANSCRIPT_FIFO=$LOCK_DIR/transcript-${PORT}-$$.fifo
-    rm -f "$TRANSCRIPT_FIFO"
-    mkfifo -m 0600 "$TRANSCRIPT_FIFO"
-    /usr/local/sbin/consolepi-transcript-writer "$TRANSCRIPT_MODE" "$TRANSCRIPT" <"$TRANSCRIPT_FIFO" &
-    WRITER_PID=$!
+    : >"$TRANSCRIPT"
+    chmod 0600 "$TRANSCRIPT"
     log "RECORD user=$USER device=$DEVICE_NAME file=$TRANSCRIPT"
     set +e
-    if [ "$TRANSCRIPT_MODE" = output ]; then
-        SCRIPT_LOG_OPTION=--log-out
-    else
-        SCRIPT_LOG_OPTION=--log-io
-    fi
-    script --quiet --flush --return --force --echo never \
-        "$SCRIPT_LOG_OPTION" "$TRANSCRIPT_FIFO" --command "$PICOCOM_CMD"
+    # `script` vytváří další pseudo-terminál. Na cílovém Raspberry Pi tím
+    # přestává fungovat interaktivní vstup do picocomu. Picocom ale umí
+    # záznam výstupu nativně, proto zůstává přímo na SSH TTY; Ctrl-A, Ctrl-X
+    # i zavření SSH okna se doručí stejnému procesu jako bez záznamu.
+    # Režim "full" je z bezpečnostních důvodů také výstupní záznam: vstup
+    # operátora může obsahovat přihlašovací údaje zařízení.
+    picocom \
+        --quiet \
+        --baud "$SERIAL_BAUD" \
+        --databits "$SERIAL_DATABITS" \
+        --parity "$SERIAL_PARITY" \
+        --stopbits "$SERIAL_STOPBITS" \
+        --flow "$SERIAL_FLOW" \
+        $ECHO_OPTION \
+        --noreset \
+        --nolock \
+        --logfile "$TRANSCRIPT" \
+        "$SERIAL_DEVICE"
     rc=$?
     set -e
-    rm -f "$TRANSCRIPT_FIFO"
-    TRANSCRIPT_FIFO=
-    wait "$WRITER_PID" || true
-    WRITER_PID=
+    finalize_picocom_transcript
     exit "$rc"
 elif [ "$TRANSCRIPT_MODE" != events ]; then
     log "RECORD_SKIPPED device=$DEVICE_NAME reason=disk_limit_or_reserve"

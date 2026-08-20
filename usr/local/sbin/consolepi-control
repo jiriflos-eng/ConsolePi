@@ -13,6 +13,7 @@ import pwd
 import fcntl
 import gzip
 from urllib.parse import quote
+from urllib.parse import urlparse
 from pathlib import Path
 
 STATE_DIR = Path("/var/lib/consolepi-web")
@@ -40,6 +41,10 @@ LOG_MAINTAIN = Path("/usr/local/sbin/consolepi-log-maintain")
 UPDATE_STATE = Path("/var/lib/consolepi-web/update-status.json")
 PROXY_CONFIG = Path("/etc/consolepi/proxy.json")
 APT_PROXY_CONFIG = Path("/etc/apt/apt.conf.d/90consolepi-proxy")
+APT_SOURCES_CONFIG = Path("/etc/consolepi/apt-sources.json")
+APT_SOURCE_PARTS = Path("/etc/apt/sources.list.d")
+DEBIAN_SOURCES = APT_SOURCE_PARTS / "debian.sources"
+RASPI_SOURCES = APT_SOURCE_PARTS / "raspi.sources"
 LABELS_CONFIG = Path("/etc/consolepi/labels.json")
 FIRSTBOOT_CONFIG = Path("/etc/consolepi/firstboot.json")
 GENERIC_IMAGE_CONFIG = Path("/etc/consolepi/generic-image.json")
@@ -863,6 +868,168 @@ def proxy_configure():
         f"host={host if enabled else '-'} port={port}",
     )
     proxy_status()
+
+
+def apt_sources_defaults():
+    """Return the supported Raspberry Pi OS core repositories.
+
+    ConsolePi deliberately manages only the distribution source files it owns.
+    Separately installed administrator files in ``sources.list.d`` are never
+    deleted or rewritten.
+    """
+    codename = "bookworm"
+    try:
+        for line in Path("/etc/os-release").read_text().splitlines():
+            if line.startswith("VERSION_CODENAME="):
+                value = line.partition("=")[2].strip().strip('"')
+                if re.fullmatch(r"[a-z0-9-]{2,32}", value):
+                    codename = value
+                break
+    except OSError:
+        pass
+    return {
+        "mode": "official",
+        "codename": codename,
+        "debian_uri": "http://deb.debian.org/debian",
+        "security_uri": "http://security.debian.org/debian-security",
+        "raspberrypi_uri": "http://archive.raspberrypi.com/debian",
+    }
+
+
+def read_apt_sources_config():
+    values = apt_sources_defaults()
+    try:
+        stored = json.loads(APT_SOURCES_CONFIG.read_text())
+        if isinstance(stored, dict):
+            values.update({key: stored[key] for key in values if key in stored})
+    except (OSError, ValueError, json.JSONDecodeError):
+        pass
+    return values
+
+
+def validate_apt_uri(value, label):
+    """Accept only a plain HTTP(S) repository base URI.
+
+    APT source syntax permits many additional options.  The web interface must
+    not expose that grammar: no credentials, query strings, fragments, newline
+    injection or embedded source options are accepted here.
+    """
+    value = str(value).strip().rstrip("/")
+    if not value or len(value) > 512 or any(character in value for character in "\r\n\\\""):
+        raise ValueError(f"{label} není platná URL repozitáře.")
+    parsed = urlparse(value)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ValueError(f"{label} musí začínat http:// nebo https://.")
+    if parsed.username or parsed.password or parsed.query or parsed.fragment:
+        raise ValueError(f"{label} nesmí obsahovat přihlašovací údaje ani parametry URL.")
+    if not re.fullmatch(r"[A-Za-z0-9._:-]+", parsed.netloc):
+        raise ValueError(f"{label} obsahuje nepovolený název serveru.")
+    if not re.fullmatch(r"(?:/[A-Za-z0-9._~:@%+,-]+)*", parsed.path or ""):
+        raise ValueError(f"{label} obsahuje nepovolenou cestu.")
+    if any(part in {".", ".."} for part in parsed.path.split("/")):
+        raise ValueError(f"{label} obsahuje nepovolenou cestu.")
+    return value
+
+
+def render_apt_sources(values):
+    codename = str(values["codename"])
+    if not re.fullmatch(r"[a-z0-9-]{2,32}", codename):
+        raise ValueError("Kódové označení systému není podporované.")
+    debian = values["debian_uri"]
+    security = values["security_uri"]
+    raspberrypi = values["raspberrypi_uri"]
+    return {
+        "debian.sources": (
+            "# Spravováno ConsolePi. Ručně neupravujte.\n"
+            "Types: deb\n"
+            f"URIs: {debian}\n"
+            f"Suites: {codename} {codename}-updates\n"
+            "Components: main\n"
+            "Architectures: arm64\n"
+            "Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg\n\n"
+            "Types: deb\n"
+            f"URIs: {security}\n"
+            f"Suites: {codename}-security\n"
+            "Components: main\n"
+            "Architectures: arm64\n"
+            "Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg\n"
+        ),
+        "raspi.sources": (
+            "# Spravováno ConsolePi. Ručně neupravujte.\n"
+            "Types: deb\n"
+            f"URIs: {raspberrypi}\n"
+            f"Suites: {codename}\n"
+            "Components: main\n"
+            "Architectures: arm64\n"
+            "Signed-By: /usr/share/keyrings/raspberrypi-archive-keyring.gpg\n"
+        ),
+    }
+
+
+def verify_apt_sources(files):
+    """Refresh candidate lists without touching the system APT cache."""
+    with tempfile.TemporaryDirectory(prefix="consolepi-apt-sources-") as temporary:
+        root = Path(temporary)
+        parts = root / "sources.list.d"
+        lists = root / "lists"
+        parts.mkdir(mode=0o755)
+        lists.mkdir(mode=0o755)
+        for name, text in files.items():
+            (parts / name).write_text(text)
+        result = run(
+            "apt-get",
+            "-o", "Dir::Etc::sourcelist=-",
+            "-o", f"Dir::Etc::sourceparts={parts}",
+            "-o", f"Dir::State::Lists={lists}",
+            "-o", "APT::Get::List-Cleanup=0",
+            "update", check=False,
+        )
+    if result.returncode:
+        message = (result.stderr or result.stdout).strip().splitlines()
+        raise ValueError(message[-1] if message else "Ověření APT repozitářů selhalo.")
+
+
+def apt_sources_status():
+    values = read_apt_sources_config()
+    print(json.dumps({
+        "mode": values["mode"], "codename": values["codename"],
+        "debian_uri": values["debian_uri"], "security_uri": values["security_uri"],
+        "raspberrypi_uri": values["raspberrypi_uri"],
+        "managed": DEBIAN_SOURCES.exists() and RASPI_SOURCES.exists(),
+    }))
+
+
+def apply_apt_sources(values, verify=True):
+    files = render_apt_sources(values)
+    if verify:
+        verify_apt_sources(files)
+    APT_SOURCE_PARTS.mkdir(mode=0o755, parents=True, exist_ok=True)
+    for name, text in files.items():
+        atomic_write(APT_SOURCE_PARTS / name, text, 0o644)
+    atomic_write(APT_SOURCES_CONFIG, json.dumps(values, indent=2) + "\n", 0o644)
+    run("logger", "-p", "authpriv.notice", "-t", "consolepi",
+        f"APT_SOURCES mode={values['mode']} debian={values['debian_uri']} "
+        f"security={values['security_uri']} raspberrypi={values['raspberrypi_uri']}")
+    apt_sources_status()
+
+
+def apt_sources_configure():
+    payload = json.loads(sys.stdin.read(8192))
+    mode = str(payload.get("mode", "official")).strip().lower()
+    if mode not in {"official", "mirror"}:
+        raise ValueError("Vyberte oficiální zdroje nebo vlastní mirror.")
+    values = apt_sources_defaults()
+    values["mode"] = mode
+    if mode == "mirror":
+        values["debian_uri"] = validate_apt_uri(payload.get("debian_uri", ""), "Debian mirror")
+        values["security_uri"] = validate_apt_uri(payload.get("security_uri", ""), "Security mirror")
+        values["raspberrypi_uri"] = validate_apt_uri(payload.get("raspberrypi_uri", ""), "Raspberry Pi mirror")
+    apply_apt_sources(values, verify=True)
+
+
+def apt_sources_reset():
+    # Used by generic image sanitization.  Do not require network access there.
+    apply_apt_sources(apt_sources_defaults(), verify=False)
 
 
 def discovery_defaults():
@@ -1720,6 +1887,10 @@ def factory_reset():
             0o600,
         )
         APT_PROXY_CONFIG.unlink(missing_ok=True)
+        # Tovární reset nesmí ponechat organizací určený mirror.  Zdrojové
+        # soubory jsou generované z této bezpečné výchozí konfigurace;
+        # volání nevyžaduje dostupnou síť.
+        apt_sources_reset()
         atomic_write(LABELS_CONFIG, "{}\n", 0o644)
         # Vlastní povolené zdroje jsou provozní nastavení firewallu. Tovární
         # reset je smaže; aktuální lokální ethernetová síť se doplní níže
@@ -1983,6 +2154,15 @@ def main():
             proxy_configure()
         else:
             raise ValueError("Nepovolená operace proxy.")
+    elif len(sys.argv) == 3 and sys.argv[1] == "repositories":
+        if sys.argv[2] == "status":
+            apt_sources_status()
+        elif sys.argv[2] == "configure":
+            apt_sources_configure()
+        elif sys.argv[2] == "reset":
+            apt_sources_reset()
+        else:
+            raise ValueError("Nepovolená operace APT repozitářů.")
     elif len(sys.argv) == 4 and sys.argv[1] == "label":
         if sys.argv[2] != "set":
             raise ValueError("Nepovolená operace popisku.")

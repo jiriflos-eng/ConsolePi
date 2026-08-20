@@ -62,7 +62,7 @@
 </section>
 
 <section id="network" class="panel">
-  <h2><span class="heading-illustration network" aria-hidden="true"></span>Nastavení Ethernetu</h2>
+        <h2 class="network-panel-heading"><span class="heading-illustration integration" aria-hidden="true"></span>Síť a integrace</h2>
   {% if network_change_pending %}
   <section class="interface-status network-change-pending" role="status" data-network-countdown data-remaining-seconds="{{ network_change_pending.remaining_seconds }}"{% if network_change_pending.previous_address %} data-fallback-url="https://{{ network_change_pending.previous_address }}/admin?tab=network"{% endif %}>
     <div class="interface-status-head">
@@ -94,6 +94,9 @@
   </section>
   <form action="{{ url_for('network_apply') }}" method="post" class="network-form network-config-card">
     <input type="hidden" name="csrf" value="{{ csrf }}">
+    <div class="network-config-heading">
+      <div><small>Ethernetové připojení</small><strong>IPv4 konfigurace</strong></div>
+    </div>
     <div class="mode">
       <label><input type="radio" name="mode" value="dhcp" {% if network.mode == "dhcp" %}checked{% endif %}> DHCP</label>
       <label><input type="radio" name="mode" value="static" {% if network.mode == "static" %}checked{% endif %}> Static</label>
@@ -173,6 +176,28 @@
       </div>
       <p class="hint">Proxy se použije pro kontrolu a instalaci balíčků přes APT. Přihlašovací heslo se ukládá pouze pro uživatele root a ve webu se nikdy zpětně nezobrazuje.</p>
       <button type="submit">Uložit proxy</button>
+    </form>
+  </section>
+  <section class="interface-status proxy-card repositories-card">
+    <div class="interface-status-head">
+      <div><small>Systémové aktualizace</small><strong>APT repozitáře</strong></div>
+      <span class="badge {{ 'ready' if repositories.mode == 'official' else 'offline' }}">{{ "Oficiální" if repositories.mode == "official" else "Vlastní mirror" }}</span>
+    </div>
+    <form action="{{ url_for('network_repositories') }}" method="post" class="proxy-form" data-repositories-form>
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label>Zdroj balíčků
+        <select name="mode" data-repositories-mode>
+          <option value="official" {% if repositories.mode == "official" %}selected{% endif %}>Oficiální Debian a Raspberry Pi repozitáře</option>
+          <option value="mirror" {% if repositories.mode == "mirror" %}selected{% endif %}>Vlastní lokální mirror</option>
+        </select>
+      </label>
+      <div class="proxy-fields repositories-fields" data-repositories-fields>
+        <label>Debian mirror:<input name="debian_uri" value="{{ repositories.debian_uri }}" placeholder="https://apt.example.local/debian"></label>
+        <label>Security mirror:<input name="security_uri" value="{{ repositories.security_uri }}" placeholder="https://apt.example.local/debian-security"></label>
+        <label class="proxy-full">Raspberry Pi mirror:<input name="raspberrypi_uri" value="{{ repositories.raspberrypi_uri }}" placeholder="https://apt.example.local/raspberrypi"></label>
+      </div>
+      <p class="hint">Před uložením ConsolePi stáhne indexy do odděleného dočasného úložiště. Při chybě se aktivní APT konfigurace nezmění. Proxy nastavujte samostatně výše.</p>
+      <button type="submit">Ověřit a uložit repozitáře</button>
     </form>
   </section>
   <section class="interface-status discovery-card">

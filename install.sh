@@ -233,6 +233,9 @@ fi
 if [ ! -e /etc/consolepi/proxy.json ]; then
     install -m 0600 "$ROOT/etc/consolepi/proxy.json" /etc/consolepi/proxy.json
 fi
+if [ ! -e /etc/consolepi/apt-sources.json ]; then
+    install -m 0644 "$ROOT/etc/consolepi/apt-sources.json" /etc/consolepi/apt-sources.json
+fi
 if [ ! -e /etc/consolepi/identity.json ]; then
     install -m 0644 "$ROOT/etc/consolepi/identity.json" /etc/consolepi/identity.json
 fi
