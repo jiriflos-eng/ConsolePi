@@ -48,6 +48,7 @@ BACKUP_FILES = {
     "etc/consolepi/radius.json": (0o644, False),
     "etc/consolepi/radius-secrets.json": (0o600, True),
     "etc/consolepi/proxy.json": (0o600, True),
+    "etc/consolepi/apt-sources.json": (0o644, False),
     "etc/consolepi/identity.json": (0o644, False),
     "etc/consolepi/labels.json": (0o644, False),
     "etc/consolepi/web.auth": (0o640, True),
@@ -58,6 +59,8 @@ BACKUP_FILES = {
     "etc/nftables.conf": (0o755, False),
     "etc/chrony/sources.d/consolepi.sources": (0o644, False),
     "etc/systemd/timesyncd.conf.d/consolepi.conf": (0o644, False),
+    "etc/apt/sources.list.d/debian.sources": (0o644, False),
+    "etc/apt/sources.list.d/raspi.sources": (0o644, False),
 }
 
 

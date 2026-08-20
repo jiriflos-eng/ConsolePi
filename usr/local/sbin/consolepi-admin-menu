@@ -186,6 +186,76 @@ print(sources[index - 1]["id"])
     done
 }
 
+show_repositories() {
+    python3 -c '
+import json
+import sys
+
+status = json.load(sys.stdin)
+print("\nAPT repozitáře")
+print("  režim: {}".format("vlastní lokální mirror" if status["mode"] == "mirror" else "oficiální Debian a Raspberry Pi"))
+print("  Debian:      {}".format(status["debian_uri"]))
+print("  Security:    {}".format(status["security_uri"]))
+print("  Raspberry Pi: {}".format(status["raspberrypi_uri"]))
+'
+}
+
+configure_repositories() {
+    while :; do
+        repository_status=$(sudo /usr/local/sbin/consolepi-control repositories status) || {
+            printf '%s\n' 'Stav APT repozitářů nelze načíst.'
+            return
+        }
+        if ! printf '%s\n' "$repository_status" | show_repositories; then
+            printf '%s\n' 'Stav APT repozitářů není platný.'
+            return
+        fi
+        printf '\n[1] Oficiální repozitáře  [2] Vlastní lokální mirror  [0] Zpět\nVolba: '
+        IFS= read -r action
+        case "$action" in
+            1)
+                printf 'Obnovit oficiální Debian a Raspberry Pi repozitáře? [a/N]: '
+                IFS= read -r answer
+                case "$answer" in
+                    a|A|ano|ANO)
+                        if printf '%s\n' '{"mode":"official"}' |
+                            sudo /usr/local/sbin/consolepi-control repositories configure >/dev/null; then
+                            printf '%s\n' 'Oficiální repozitáře byly ověřeny a uloženy.'
+                        else
+                            printf '%s\n' 'Ověření selhalo; původní konfigurace zůstala zachována.'
+                        fi
+                        ;;
+                esac
+                ;;
+            2)
+                printf 'Debian mirror (např. http://apt.firma.local/debian): '
+                IFS= read -r debian_uri
+                printf 'Debian Security mirror: '
+                IFS= read -r security_uri
+                printf 'Raspberry Pi mirror: '
+                IFS= read -r raspberrypi_uri
+                if python3 - "$debian_uri" "$security_uri" "$raspberrypi_uri" <<'PY' |
+import json
+import sys
+print(json.dumps({
+    "mode": "mirror",
+    "debian_uri": sys.argv[1],
+    "security_uri": sys.argv[2],
+    "raspberrypi_uri": sys.argv[3],
+}))
+PY
+                    sudo /usr/local/sbin/consolepi-control repositories configure >/dev/null; then
+                    printf '%s\n' 'Lokální mirror byl ověřen a uložen.'
+                else
+                    printf '%s\n' 'Ověření selhalo; původní konfigurace zůstala zachována.'
+                fi
+                ;;
+            0) return ;;
+            *) printf '%s\n' 'Neplatná volba.' ;;
+        esac
+    done
+}
+
 factory_reset() {
     printf '\n\033[31mTOVARNI RESET\033[0m\n'
     printf '%s\n' 'Nastavi DHCP, vymaze prirazeni USB kabelu, RADIUS, seriove predvolby a souborove zaznamy relaci.'
@@ -220,6 +290,7 @@ while :; do
     printf '%s\n' '  [5] Obnovit tovarni nastaveni'
     printf '%s\n' '  [6] Prejit do shellu'
     printf '%s\n' '  [7] Obnovit heslo webove administrace'
+    printf '%s\n' '  [8] APT repozitare (oficialni / lokalni mirror)'
     printf '%s\n' '  [0] Odhlasit'
     printf '\nVolba: '
     IFS= read -r choice || exit 0
@@ -231,6 +302,7 @@ while :; do
         5) factory_reset; pause ;;
         6) printf '%s\n' 'Prechazim do administracniho shellu.'; exec /bin/bash --noprofile --norc ;;
         7) sudo /usr/local/sbin/consolepi-reset-web-password; pause ;;
+        8) configure_repositories; pause ;;
         0) exit 0 ;;
         *) printf '%s\n' 'Neplatna volba.'; pause ;;
     esac

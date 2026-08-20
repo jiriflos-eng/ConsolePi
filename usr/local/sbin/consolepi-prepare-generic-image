@@ -294,6 +294,20 @@ find /root /home -xdev -type f -path '*/.ssh/*' -delete 2>/dev/null || true
 find /root /home -xdev -type f \( -name '.bash_history' -o -name '.zsh_history' -o -name '.python_history' \) -delete 2>/dev/null || true
 rm -f /etc/ssh/ssh_host_* /etc/consolepi/tls/consolepi.key \
     /etc/consolepi/tls/consolepi.crt /etc/consolepi/web.secret /etc/consolepi/web.auth
+# A generic image must not retain an organisation-specific package mirror.
+# Reset the two Raspberry Pi OS source definitions without contacting a
+# network.  Additional list files are intentionally discarded here: they can
+# contain private repository hosts, credentials or a device-specific policy.
+/usr/local/sbin/consolepi-control repositories reset >/dev/null ||
+    fail 'nelze obnovit oficiální APT repozitáře'
+find /etc/apt/sources.list.d -mindepth 1 -maxdepth 1 \
+    ! -name debian.sources ! -name raspi.sources -delete 2>/dev/null ||
+    fail 'nelze vyčistit doplňkové APT repozitáře'
+printf '%s\n' '# Spravováno ConsolePi; zdroje jsou v sources.list.d/debian.sources a raspi.sources.' \
+    >"$STATE_DIR/.sources.list.generic-new" || fail 'nelze připravit APT sources.list'
+chmod 0644 "$STATE_DIR/.sources.list.generic-new" || fail 'nelze nastavit práva APT sources.list'
+mv -f "$STATE_DIR/.sources.list.generic-new" /etc/apt/sources.list ||
+    fail 'nelze obnovit APT sources.list'
 rm -f /etc/apt/apt.conf.d/90consolepi-proxy /var/lib/snmp/snmpd.conf
 rm -rf /var/backups/consolepi
 rm -f /etc/udev/rules.d/70-consolepi.rules

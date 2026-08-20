@@ -2,11 +2,19 @@
 import os
 import pwd
 import re
+import signal
 import shutil
 import sys
 from pathlib import Path
 
 CONFIG = Path("/etc/consolepi/consolepi.conf")
+
+# Při odpojení SSH klienta dostane procesní skupina relace HUP/TERM/INT.
+# Writer musí zůstat naživu až do EOF z FIFO, aby data flushnul a .active
+# soubor přejmenoval na výsledný .log. Ukončení producenta obstarává
+# consolepi-session; tento proces pak bez dalšího signálu skončí po EOF.
+for _signal in (signal.SIGHUP, signal.SIGINT, signal.SIGTERM):
+    signal.signal(_signal, signal.SIG_IGN)
 
 
 def setting(name, default):
@@ -82,7 +90,12 @@ with target.open("wb") as output:
     os.chmod(target, 0o600)
     os.chown(target, console.pw_uid, console.pw_gid)
     while True:
-        block = sys.stdin.buffer.read(65536)
+        # BufferedReader.read(65536) on a FIFO can wait until the requested
+        # block is full.  The resulting back-pressure then blocks `script`
+        # and, in turn, the live serial console.  A direct os.read returns
+        # data as soon as the pipe has any, keeping recording off the console
+        # data path while still processing bounded chunks.
+        block = os.read(sys.stdin.fileno(), 8192)
         if not block:
             break
         block = redact_output(block)

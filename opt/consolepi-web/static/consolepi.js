@@ -70,6 +70,22 @@
     updateProxyFields();
   }
 
+  const repositoriesMode = document.querySelector("[data-repositories-mode]");
+  const repositoriesFields = document.querySelector("[data-repositories-fields]");
+  const updateRepositoryFields = () => {
+    if (!repositoriesMode || !repositoriesFields) return;
+    const customMirror = repositoriesMode.value === "mirror";
+    repositoriesFields.hidden = !customMirror;
+    repositoriesFields.querySelectorAll("input").forEach((field) => {
+      field.disabled = !customMirror;
+      field.required = customMirror;
+    });
+  };
+  if (repositoriesMode) {
+    repositoriesMode.addEventListener("change", updateRepositoryFields);
+    updateRepositoryFields();
+  }
+
   const updateAccessConfirmation = (form) => {
     const network = form.querySelector('input[name="network"]');
     const confirmation = form.querySelector("[data-access-confirm]");

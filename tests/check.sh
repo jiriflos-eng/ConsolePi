@@ -120,6 +120,7 @@ python3 -c 'import ast, pathlib; ast.parse(pathlib.Path(
     ok "ConsolePi SNMP exporter Python syntax" || bad "ConsolePi SNMP exporter Python syntax"
 
 python3 "$ROOT/tests/snmp_behavior.py" || bad "ConsolePi SNMP exporter behavior"
+python3 "$ROOT/tests/transcript_behavior.py" || bad "console transcript disconnect behavior"
 
 if command -v snmptranslate >/dev/null 2>&1; then
     if MIBDIRS="+$ROOT/usr/share/snmp/mibs" MIBS=+CONSOLEPI-MIB \
@@ -136,6 +137,7 @@ fi
 
 python3 "$ROOT/tests/generic_behavior.py" || bad "generic image behavioral security tests"
 python3 "$ROOT/tests/network_apply_behavior.py" || bad "delayed network apply behavior"
+python3 "$ROOT/tests/apt_sources_behavior.py" || bad "APT repository source behavior"
 if [ "${CONSOLEPI_SKIP_ARCHIVE_TEST:-0}" != 1 ]; then
     "$ROOT/tests/check-install-archive.sh" || bad "install archive credential scan"
 fi
@@ -275,7 +277,7 @@ grep -q 'def factory_reset' "$ROOT/usr/local/sbin/consolepi-control" &&
     ok "factory reset entry points" ||
     bad "factory reset entry points missing"
 
-grep -q -- '--log-io' "$ROOT/usr/local/sbin/consolepi-session" &&
+grep -q -- '--logfile "$TRANSCRIPT"' "$ROOT/usr/local/sbin/consolepi-session" &&
     grep -q 'TRANSCRIPT_MIN_FREE_MB' "$ROOT/etc/consolepi/consolepi.conf" &&
     grep -q 'consolepi-log-maintain --monitor' "$ROOT/etc/systemd/system/consolepi-port-monitor.service" &&
     grep -q 'except PermissionError' "$ROOT/usr/local/sbin/consolepi-log-maintain" &&
@@ -350,6 +352,17 @@ grep -q 'def proxy_configure' "$ROOT/usr/local/sbin/consolepi-control" &&
     grep -q 'Acquire::https::Proxy' "$ROOT/usr/local/sbin/consolepi-control" &&
     ok "secure APT proxy configuration" ||
     bad "APT proxy configuration missing"
+
+grep -q 'def apt_sources_configure' "$ROOT/usr/local/sbin/consolepi-control" &&
+    grep -q 'repositories reset' "$ROOT/usr/local/sbin/consolepi-prepare-generic-image" &&
+    grep -q 'network/repositories' "$ROOT/opt/consolepi-web/app.py" &&
+    grep -q 'APT repozitáře' "$ROOT/opt/consolepi-web/templates/index.html" &&
+    grep -q 'configure_repositories' "$ROOT/usr/local/sbin/consolepi-admin-menu" &&
+    grep -q 'repositories configure' "$ROOT/usr/local/sbin/consolepi-admin-menu" &&
+    grep -q 'apt_sources_reset()' "$ROOT/usr/local/sbin/consolepi-control" &&
+    test -s "$ROOT/etc/consolepi/apt-sources.json" &&
+    ok "managed APT repository configuration" ||
+    bad "APT repository configuration missing"
 
 grep -q 'def discovery_configure' "$ROOT/usr/local/sbin/consolepi-control" &&
     grep -q 'network/discovery' "$ROOT/opt/consolepi-web/app.py" &&

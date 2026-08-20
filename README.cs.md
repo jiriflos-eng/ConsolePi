@@ -1,6 +1,6 @@
-# ConsolePi 1.7.0 – instalace na nový Raspberry Pi 3
+# ConsolePi+ 1.9.0 – instalace na nový Raspberry Pi 3
 
-Tento postup používá hotový archiv `ConsolePi-1.7.0-install.tar.gz`. Nevyžaduje bitovou kopii SD karty a je určen pro čistý Raspberry Pi OS Lite s DHCP.
+Tento postup používá hotový archiv `ConsolePi-1.9.0-install.tar.gz`. Nevyžaduje bitovou kopii SD karty a je určen pro čistý Raspberry Pi OS Lite s DHCP.
 
 ## 1. Vytvoření SSH klíče
 
@@ -83,15 +83,15 @@ Po restartu se znovu přihlaste stejným příkazem.
 
 Z Macu odešlete hotový archiv přímo do domovského adresáře uživatele `consolepi`. Místo `IP_RPI` doplňte DHCP adresu zařízení:
 
-    scp -i "$HOME/.ssh/consolepi-admin" "ConsolePi-1.7.0-install.tar.gz" consolepi@IP_RPI:~/
+    scp -i "$HOME/.ssh/consolepi-admin" "ConsolePi-1.9.0-install.tar.gz" consolepi@IP_RPI:~/
 
 Pokud soubor nemáte v aktuálním adresáři, použijte jeho úplnou cestu, například:
 
-    scp -i "$HOME/.ssh/consolepi-admin" "$HOME/Downloads/ConsolePi-1.7.0-install.tar.gz" consolepi@IP_RPI:~/
+    scp -i "$HOME/.ssh/consolepi-admin" "$HOME/Downloads/ConsolePi-1.9.0-install.tar.gz" consolepi@IP_RPI:~/
 
 Ve Windows použijte v PowerShellu odpovídající cestu k soukromému klíči:
 
-    scp -i "$env:USERPROFILE\.ssh\consolepi-admin" "$HOME\Downloads\ConsolePi-1.7.0-install.tar.gz" consolepi@IP_RPI:~/
+    scp -i "$env:USERPROFILE\.ssh\consolepi-admin" "$HOME\Downloads\ConsolePi-1.9.0-install.tar.gz" consolepi@IP_RPI:~/
 
 ## 5. Instalace na Raspberry Pi
 
@@ -103,11 +103,21 @@ Na Raspberry Pi spusťte následující příkazy. Archiv se rozbalí do vašeho
 
     install_dir="$HOME/consolepi-install"
     mkdir -p "$install_dir"
-    tar --no-same-owner -xzf "$HOME/ConsolePi-1.7.0-install.tar.gz" -C "$install_dir"
+    tar --no-same-owner -xzf "$HOME/ConsolePi-1.9.0-install.tar.gz" -C "$install_dir"
     cd "$install_dir"
     ./bootstrap-install.sh
 
 Instalátor funguje jak při přihlášení SSH klíčem, tak při přihlášení heslem. Pokud nenajde veřejný klíč aktuálního správce, vytvoří pouze dočasný instalační klíč bez zachované soukromé části. V průvodci prvního spuštění proto vždy vložte vlastní veřejný klíč nebo nechte vytvořit a jednou stáhnout nový osobní klíč. Instalátor nastaví firewall pro právě získanou ethernetovou DHCP síť a připraví webový průvodce. Nová instalace začne porty `KONZOLE-1` až `KONZOLE-4` ve stavu nepřiřazeno.
+
+## APT repozitáře po instalaci
+
+ConsolePi ve výchozím stavu používá oficiální repozitáře Debianu a Raspberry
+Pi. Pro síť bez přímého přístupu k internetu otevřete **Síť → APT repozitáře**
+a přepněte na lokální mirror. Zadejte samostatné HTTP/HTTPS adresy pro Debian,
+Debian Security a Raspberry Pi; ConsolePi všechny tři zdroje ověří odděleným
+`apt-get update` ještě před nahrazením aktivní konfigurace. Proxy je nezávislá
+volba a lze ji kombinovat s oběma režimy. První bootstrap stále potřebuje
+dostupné zdroje balíčků nebo odpovídající proxy.
 
 ## 6. První spuštění
 
@@ -146,9 +156,9 @@ Nalezení přes mDNS není ověření identity: před zadáním přihlašovacíc
 vždy ověřte HTTPS certifikát nebo SSH host-key fingerprint.
 
 Hotové přenosné binárky jsou ke stažení v
-[releasu ConsolePi v1.7.0](https://github.com/jiriflos-eng/ConsolePi/releases/tag/v1.7.0):
+[releasu ConsolePi+ v1.9.0](https://github.com/jiriflos-eng/ConsolePi-Plus/releases/tag/v1.9.0):
 pro macOS (Apple Silicon i Intel), Windows x64 a Linux (x64 i ARM64).
-Soubor `consolepi-discover-v1.7.0.sha256` slouží k ověření stažených binárek.
+Soubor `consolepi-discover-v1.9.0.sha256` slouží k ověření stažených binárek.
 ZIP pro macOS i Windows obsahuje složku `ConsolePi Discovery` a spouštěč
 přibalené aplikace. Po ověření checksumu v macOS spusťte
 `Spustit ConsolePi Discovery.command`; ve Windows použijte

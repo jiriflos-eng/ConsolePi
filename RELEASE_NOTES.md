@@ -1,3 +1,11 @@
+# ConsolePi+ 1.9.0 · Integrace a provoz
+
+- V **Síť → APT repozitáře** lze přepnout mezi oficiálními zdroji Debianu/Raspberry Pi a vlastním lokálním mirrorem. Každá změna se před uložením ověřuje odděleným během `apt-get update`, takže nefunkční mirror nenahradí funkční konfiguraci.
+- Proxy zůstává samostatné nastavení: lze ji kombinovat s oficiálními repozitáři i s vlastním mirrorem.
+- Příprava generic image vždy odstraní proxy a všechny doplňkové APT zdroje, poté obnoví oficiální Raspberry Pi OS repozitáře bez přebírání identity nebo interních adres z master zařízení.
+- Záznam sériových relací se bezpečně dokončí i při zavření SSH klienta; port se po ukončení relace korektně uvolní.
+- Rozhraní ConsolePi+ sjednocuje síťové a integrační nastavení, přidává přehlednější formuláře a aktualizovanou načítací animaci.
+
 # ConsolePi 1.7.0 · Zabbix monitoring
 
 - Přidána importovatelná šablona pro Zabbix 7.4 bez uložených SNMPv3 přihlašovacích údajů.
