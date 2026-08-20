@@ -7,7 +7,7 @@ keys, serial transcripts or configuration backups in a public issue.
 
 Contact the maintainer privately and include:
 
-- affected ConsolePi version;
+- affected ConsolePi+ version;
 - a concise reproduction procedure;
 - the expected and actual behaviour;
 - logs with secrets and customer data removed.
@@ -19,4 +19,3 @@ and publish the fix and advisory once users can update safely.
 
 Only the latest released version should be treated as supported. Releases must
 be signed with the release administrator's offline/private signing key.
-

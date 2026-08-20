@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Systém · ConsolePi{% endblock %}
+{% block title %}Systém · ConsolePi+{% endblock %}
 {% block content %}
 {% set active_page = "system" %}
 {% include "_navigation.html" %}
@@ -114,7 +114,7 @@
 <div class="maintenance-grid">
   <section class="system-card maintenance-card">
     <h2><span class="heading-illustration subheading identity" aria-hidden="true"></span>Identita zařízení</h2>
-    <p class="section-lead">Rozliší více jednotek ConsolePi po naklonování SD karty.</p>
+    <p class="section-lead">Rozliší více jednotek ConsolePi+ po naklonování SD karty.</p>
     <form action="{{ url_for('system_identity') }}" method="post" class="maintenance-form">
       <input type="hidden" name="csrf" value="{{ csrf }}">
       <label>Hostname<input name="hostname" value="{{ identity.hostname }}" required maxlength="63"></label>
@@ -225,15 +225,15 @@
 <div class="system-section" data-system-section="maintenance" {% if system_section != "maintenance" %}hidden{% endif %}>
 <section class="system-card maintenance-card release-card">
   <div class="maintenance-heading">
-    <div><h2><span class="heading-illustration subheading update" aria-hidden="true"></span>Aktualizace ConsolePi</h2><p>Nahrajte pouze balíček <code>.cpiupdate</code> vytvořený oficiálním podepisovacím klíčem ConsolePi. Před instalací je vždy ověřen podpis i kontrolní součet.</p></div>
+    <div><h2><span class="heading-illustration subheading update" aria-hidden="true"></span>Aktualizace ConsolePi+</h2><p>Nahrajte pouze balíček <code>.cpiupdate</code> vytvořený oficiálním podepisovacím klíčem ConsolePi+. Před instalací je vždy ověřen podpis i kontrolní součet.</p></div>
     <span class="badge {{ 'busy' if release_status.status in ['verifying', 'installing', 'rebooting'] else 'ready' }}">{{ {'idle': 'Připraveno', 'verifying': 'Ověřování', 'installing': 'Instalace', 'rebooting': 'Restart', 'completed': 'Dokončeno', 'failed': 'Chyba'}.get(release_status.status, 'Připraveno') }}</span>
   </div>
   {% if release_candidate %}
   <div class="release-candidate">
-    <small>Ověřený balíček</small><strong>ConsolePi {{ release_candidate.version }}</strong>
+    <small>Ověřený balíček</small><strong>ConsolePi+ {{ release_candidate.version }}</strong>
     <p>Současná verze: {{ release_candidate.current_version }} · vytvořeno {{ release_candidate.created_at }}</p>
     <details open><summary>Novinky v aktualizaci</summary><pre>{{ release_candidate.notes }}</pre></details>
-    <form action="{{ url_for('system_release_install') }}" method="post" class="inline-confirm" onsubmit="return confirm('Opravdu nainstalovat aktualizaci? Všechny aktivní SSH a sériové relace budou ukončeny a ConsolePi se po dokončení restartuje.')">
+    <form action="{{ url_for('system_release_install') }}" method="post" class="inline-confirm" onsubmit="return confirm('Opravdu nainstalovat aktualizaci? Všechny aktivní SSH a sériové relace budou ukončeny a ConsolePi+ se po dokončení restartuje.')">
       <input type="hidden" name="csrf" value="{{ csrf }}">
       <label>Pro potvrzení napište INSTALOVAT<input name="confirmation" required pattern="INSTALOVAT" autocomplete="off" spellcheck="false"></label>
       <button type="submit">Nainstalovat a restartovat</button>
@@ -287,7 +287,7 @@
     <h2><span class="heading-illustration subheading auth" aria-hidden="true"></span>Regenerace SSH a HTTPS identity</h2>
     <p>Vytvoří nové SSH hostitelské klíče a HTTPS certifikát. Běžné uložení názvu, hostname nebo umístění výše tuto akci nespouští, aby nedošlo k nečekanému zneplatnění uložených SSH fingerprintů a certifikátů.</p>
   </div>
-  <form action="{{ url_for('system_clone_rekey') }}" method="post" class="inline-confirm" onsubmit="return confirm('Opravdu změnit identitu tohoto ConsolePi? Uložené SSH fingerprinty přestanou platit.')">
+  <form action="{{ url_for('system_clone_rekey') }}" method="post" class="inline-confirm" onsubmit="return confirm('Opravdu změnit identitu tohoto ConsolePi+? Uložené SSH fingerprinty přestanou platit.')">
     <input type="hidden" name="csrf" value="{{ csrf }}">
     <label>Pro potvrzení napište KLONOVAT<input name="confirmation" required pattern="KLONOVAT"></label>
     <button class="danger-button" type="submit">Regenerovat SSH a HTTPS identitu</button>
@@ -299,7 +299,7 @@
 <section class="system-card password-card">
   <div>
     <h2><span class="heading-illustration subheading auth" aria-hidden="true"></span>Heslo webové administrace</h2>
-    <p>Změní přihlašovací heslo pouze pro HTTPS web ConsolePi. SSH hesla ani RADIUS tím nejsou ovlivněny.</p>
+    <p>Změní přihlašovací heslo pouze pro HTTPS web ConsolePi+. SSH hesla ani RADIUS tím nejsou ovlivněny.</p>
   </div>
   <form action="{{ url_for('system_web_password') }}" method="post" class="password-form" autocomplete="off">
     <input type="hidden" name="csrf" value="{{ csrf }}">
@@ -375,7 +375,7 @@
       <h3>Restart systému</h3>
       <p>Restart zachová veškerou konfiguraci, ale ukončí aktivní SSH a sériové relace.</p>
     </div>
-    <form action="{{ url_for('system_power', action='reboot') }}" method="post" onsubmit="return confirm('Opravdu restartovat ConsolePi? Všechny aktivní SSH a sériové relace budou ukončeny.')">
+    <form action="{{ url_for('system_power', action='reboot') }}" method="post" onsubmit="return confirm('Opravdu restartovat ConsolePi+? Všechny aktivní SSH a sériové relace budou ukončeny.')">
       <input type="hidden" name="csrf" value="{{ csrf }}">
       <button class="restart-button" type="submit">↻ Restartovat</button>
     </form>
@@ -383,9 +383,9 @@
   <div class="restart-method factory-reset-method">
     <div>
       <h3>Obnovit tovární nastavení</h3>
-      <p>Nastaví DHCP, výchozí identitu ConsolePi, vymaže přiřazení USB kabelů, RADIUS a sériové předvolby. Poté se otevře průvodce prvního spuštění.</p>
+      <p>Nastaví DHCP, výchozí identitu ConsolePi+, vymaže přiřazení USB kabelů, RADIUS a sériové předvolby. Poté se otevře průvodce prvního spuštění.</p>
     </div>
-    <form action="{{ url_for('system_factory_reset') }}" method="post" class="factory-reset-form" onsubmit="return confirm('Opravdu obnovit tovární nastavení ConsolePi? Aktivní konfigurace a záznamy kabelů budou odstraněny.')">
+    <form action="{{ url_for('system_factory_reset') }}" method="post" class="factory-reset-form" onsubmit="return confirm('Opravdu obnovit tovární nastavení ConsolePi+? Aktivní konfigurace a záznamy kabelů budou odstraněny.')">
       <input type="hidden" name="csrf" value="{{ csrf }}">
       <label>Pro potvrzení napište RESET<input name="confirmation" required pattern="RESET" autocomplete="off" spellcheck="false"></label>
       <button class="danger-button" type="submit">Obnovit tovární nastavení</button>

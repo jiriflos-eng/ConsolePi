@@ -1,4 +1,4 @@
-# ConsolePi: čistá instalace na Raspberry Pi 3
+# ConsolePi+: čistá instalace na Raspberry Pi 3
 
 Tento postup nahrazuje klonování bitové kopie SD karty. Výsledkem je nové,
 nezávislé zařízení: má vlastní SSH hostitelské klíče, HTTPS certifikát,
@@ -8,7 +8,7 @@ identitu i webové heslo. Soukromé SSH klíče se nikam nekopírují.
 
 - Raspberry Pi 3, stabilní zdroj a microSD alespoň 16 GB;
 - ethernet do management sítě s DHCP nebo známým statickým nastavením;
-- Mac s Raspberry Pi Imagerem a instalačním balíčkem ConsolePi;
+- Mac s Raspberry Pi Imagerem a instalačním balíčkem ConsolePi+;
 - přístup k internetu pro první instalaci balíčků APT, případně nastavený
   firemní proxy server;
 - vlastní veřejný SSH klíč. Jeho soukromá část zůstává v počítači správce.
@@ -24,7 +24,7 @@ identitu i webové heslo. Soukromé SSH klíče se nikam nekopírují.
    - časové pásmo a klávesnici;
    - **Enable SSH** → **Allow public-key authentication only** a vložte svůj
      veřejný klíč;
-   - Wi-Fi není nutná; ConsolePi je určené pro ethernet.
+   - Wi-Fi není nutná; ConsolePi+ je určené pro ethernet.
 4. Zapište kartu, vložte ji do Raspberry Pi a zapněte jej.
 5. V DHCP serveru nebo skeneru sítě zjistěte IP adresu a přihlaste se:
 
@@ -32,20 +32,20 @@ identitu i webové heslo. Soukromé SSH klíče se nikam nekopírují.
    ssh -i "$HOME/.ssh/consolepi-admin" consolepi@IP_ADRESA_PI
    ```
 
-Přihlášení heslem nepoužívejte. ConsolePi vyžaduje veřejný klíč, který bootstrap
+Přihlášení heslem nepoužívejte. ConsolePi+ vyžaduje veřejný klíč, který bootstrap
 převezme také pro technický účet `console` používaný na portech 2201–2204.
 
 ## 2. Vytvoření instalačního balíčku na Macu
 
-V kořenu zdrojů ConsolePi spusťte:
+V kořenu zdrojů ConsolePi+ spusťte:
 
 ```sh
 cd "/cesta/k/consolepi-server"
 ./tools/build-install-bundle.sh
-shasum -a 256 -c dist/ConsolePi-*-install.tar.gz.sha256
+shasum -a 256 -c dist/ConsolePi-Plus-*-install.tar.gz.sha256
 ```
 
-Vznikne například `dist/ConsolePi-1.4.0-install.tar.gz`. Balíček neobsahuje
+Vznikne například `dist/ConsolePi-Plus-1.4.0-install.tar.gz`. Balíček neobsahuje
 žádný privátní klíč, webové heslo, RADIUS tajemství ani konfiguraci jiného
 zařízení.
 
@@ -54,7 +54,7 @@ zařízení.
 Z Macu:
 
 ```sh
-scp dist/ConsolePi-*-install.tar.gz consolepi@IP_ADRESA_PI:/tmp/
+scp dist/ConsolePi-Plus-*-install.tar.gz consolepi@IP_ADRESA_PI:/tmp/
 ssh -tt consolepi@IP_ADRESA_PI
 ```
 
@@ -62,8 +62,8 @@ Na Raspberry Pi rozbalte a spusťte bootstrap:
 
 ```sh
 cd /tmp
-tar -xzf ConsolePi-*-install.tar.gz
-cd ConsolePi-*-install
+tar -xzf ConsolePi-Plus-*-install.tar.gz
+cd ConsolePi-Plus-*-install
 ./bootstrap-install.sh
 ```
 
@@ -95,7 +95,7 @@ Instalátor vytvoří a nastaví zejména:
 | Logy | `/var/log/consolepi`, `root:console`, režim `0750` |
 | Přepisy relací | `/var/log/consolepi/transcripts`, `console:console`, režim `0700` |
 | Citlivá konfigurace | RADIUS, SNMP a webová tajemství v režimu `0600` nebo `0640` |
-| Služby | SSH, nginx, ConsolePi web, monitoring USB portů, automatická kontrola aktualizací a nftables |
+| Služby | SSH, nginx, web ConsolePi+, monitoring USB portů, automatická kontrola aktualizací a nftables |
 
 Tím je zajištěno, že účet `console` může otevřít sériový adaptér i vytvářet
 volitelné přepisy, ale nemá administrativní shell ani přístup k tajemstvím.

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#12302e">
-  <title>První spuštění dokončeno · ConsolePi</title>
+  <title>První spuštění dokončeno · ConsolePi+</title>
   <style>
     :root{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:#16302e;background:#f3f8f7}
     *{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:28px}
@@ -20,7 +20,7 @@
 </head>
 <body>
   <main>
-    <p class="eyebrow">ConsolePi · první spuštění dokončeno</p>
+    <p class="eyebrow">ConsolePi+ · první spuštění dokončeno</p>
     <h1>Zařízení je připravené</h1>
     <p>Byla vytvořena nová identita zařízení, webové heslo, SSH hostitelské klíče a HTTPS certifikát.</p>
     <div class="notice">Zabezpečení zařízení se právě změnilo. Při otevření následující stránky může prohlížeč požádat o potvrzení nového HTTPS certifikátu. To je při prvním spuštění očekávané.</div>
@@ -30,7 +30,7 @@
     <section class="storage">
       <h2>Administrativní SSH klíč</h2>
       {% if admin_key_pending %}
-      <p>Vybrali jste vytvoření nového osobního klíče. Kliknutím níže se bezpečně stáhne jeho <strong>privátní</strong> část. ConsolePi uloží jen veřejnou část. Soubor si uložte; znovu jej nebude možné zobrazit ani stáhnout.</p>
+      <p>Vybrali jste vytvoření nového osobního klíče. Kliknutím níže se bezpečně stáhne jeho <strong>privátní</strong> část. ConsolePi+ uloží jen veřejnou část. Soubor si uložte; znovu jej nebude možné zobrazit ani stáhnout.</p>
       <form action="{{ url_for('setup_admin_key_generate') }}" method="post" data-no-page-loader>
         <input type="hidden" name="csrf" value="{{ csrf }}">
         <button type="submit">Vytvořit a stáhnout klíč consolepi-admin</button>

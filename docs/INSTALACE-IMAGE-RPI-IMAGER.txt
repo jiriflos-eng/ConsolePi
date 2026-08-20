@@ -1,13 +1,13 @@
-ConsolePi – instalace vlastní SD image pomocí Raspberry Pi Imageru
+ConsolePi+ – instalace vlastní SD image pomocí Raspberry Pi Imageru
 ===================================================================
 
-Tento postup je určen pro připravený soubor ConsolePi ve formátu .img.xz.
+Tento postup je určen pro připravený soubor ConsolePi+ ve formátu .img.xz.
 Soubor nerozbalujte. Raspberry Pi Imager jej umí zapsat přímo.
 
 UPOZORNĚNÍ
 ---------
 Zápis image kompletně smaže vybranou SD kartu. Před pokračováním ověřte,
-že jste vybrali opravdu SD kartu pro ConsolePi, nikoli interní disk počítače.
+že jste vybrali opravdu SD kartu pro ConsolePi+, nikoli interní disk počítače.
 
 CO JE POTŘEBA
 -------------
@@ -24,8 +24,8 @@ KROK 1 – ZÁPIS IMAGE
 1. Vložte SD kartu do počítače.
 2. Otevřete Raspberry Pi Imager.
 3. Klikněte na „Choose Device“ a vyberte Raspberry Pi 3.
-4. Klikněte na „Choose OS“ a vyberte **ConsolePi Generic Image** z
-   ConsolePi custom repository. Přímé „Use custom“ v Imageru 2.0.x
+4. Klikněte na „Choose OS“ a vyberte **ConsolePi Plus Generic Image** z
+   ConsolePi Plus custom repository. Přímé „Use custom“ v Imageru 2.0.x
    OS Customisation pro vlastní image nezpřístupní, proto není podporované.
 5. Použitá položka repository musí deklarovat `init_format: systemd`.
 6. Klikněte na „Choose Storage“ a vyberte správnou SD kartu.
@@ -102,7 +102,7 @@ Windows PowerShell:
 KROK 5 – USB KONZOLE
 --------------------
 1. Připojte USB–RS232 konzolové kabely.
-2. Otevřete web ConsolePi a přihlaste se jako administrátor.
+2. Otevřete web ConsolePi+ a přihlaste se jako administrátor.
 3. V přehledu přiřaďte nově nalezenému kabelu port 2201 až 2204.
 4. Nastavte popis cílového zařízení a podle potřeby sériové parametry.
 5. Připojení na první konzoli například:
@@ -110,33 +110,33 @@ KROK 5 – USB KONZOLE
     ssh -tt -p 2201 console@IP_ADRESA_RPI
 
 V SecureCRT nastavte host IP_ADRESA_RPI, port 2201 až 2204, uživatele console
-a způsob ověření zvolený v ConsolePi (heslo, PublicKey nebo Keyboard Interactive
+a způsob ověření zvolený v ConsolePi+ (heslo, PublicKey nebo Keyboard Interactive
 pro RADIUS).
 
 POZNÁMKA K VELIKOSTI SD KARTY
 -----------------------------
 Image je zmenšený pro snadné šíření. Po zápisu na větší SD kartu není zbývající
 kapacita využita automaticky, dokud ji nepotvrdíte v průvodci prvního spuštění
-nebo později v administraci ConsolePi v části Systém.
+nebo později v administraci ConsolePi+ v části Systém.
 
 RYCHLÁ DIAGNOSTIKA
 ------------------
 Administrativní SSH:
     ssh -i CESTA_K_PRIVATNIMU_KLICI consolepi@IP_ADRESA_RPI
 
-Verze ConsolePi:
+Verze ConsolePi+:
     cat /usr/share/consolepi/VERSION
 
 Stav služeb:
     systemctl status consolepi-web nginx ssh nftables --no-pager
 
-Diagnostika ConsolePi:
+Diagnostika ConsolePi+:
     sudo consolepi-diagnose
 
 PŘÍPRAVA GENERIC IMAGE (PRO SPRÁVCE VYDÁNÍ)
 -------------------------------------------
 Tento oddíl je pouze pro vytvoření distribuovatelného masteru. Na běžně
-provozovaném ConsolePi jej nespouštějte.
+provozovaném ConsolePi+ jej nespouštějte.
 
 1. Na referenčním zařízení s aktuální instalací ověřte, že účet consolepi má
    UID 1000 a že jsou nainstalované soubory generic-image režimu.
@@ -171,7 +171,7 @@ provozovaném ConsolePi jej nespouštějte.
    má přesně first-boot hodnotu `uninitialized`.
 
 Při prvním startu nejprve doběhne customizace Raspberry Pi Imageru. Služba
-ConsolePi potom přijme právě jeden validní veřejný klíč ssh-ed25519 z účtu
+ConsolePi+ potom přijme právě jeden validní veřejný klíč ssh-ed25519 z účtu
 consolepi, zkopíruje jej technickému účtu console a vytvoří nové hostitelské
 SSH klíče, TLS klíč a webové tajemství. Pokud klíč chybí, je neplatný nebo má
 nebezpečná oprávnění, SSH i web zůstanou zastavené. Po úspěchu vznikne
@@ -179,7 +179,7 @@ SSH veřejný klíč vložený Raspberry Pi Imagerem je použit jako počátečn
 V OS Customisation smí být zapnuto pouze SSH s public-key authentication a
 právě jedním Ed25519 klíčem. Username/password, hostname, Wi-Fi, locale,
 timezone, keyboard, Raspberry Pi Connect a všechny další volby jsou
-nepodporované. Po dokončení payloadu ConsolePi samostatně ověří účet, locked
+nepodporované. Po dokončení payloadu ConsolePi+ samostatně ověří účet, locked
 password, klíč, login-capable účty, hostname, síťový profil, machine-id,
 odstranění FAT payloadu a `systemd.run`. Teprve potom atomicky vytvoří success
 marker; jakoukoli odchylku persistentně označí jako selhání a SSH ani web

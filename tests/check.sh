@@ -148,7 +148,7 @@ grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' "$ROOT/VERSION" &&
     grep -q 'def inspect' "$ROOT/usr/local/sbin/consolepi-release" &&
     test -x "$ROOT/usr/local/sbin/consolepi-release-runner" &&
     grep -q 'system_release_upload' "$ROOT/opt/consolepi-web/app.py" &&
-    grep -q 'Aktualizace ConsolePi' "$ROOT/opt/consolepi-web/templates/system.html" &&
+    grep -q 'Aktualizace ConsolePi+' "$ROOT/opt/consolepi-web/templates/system.html" &&
     grep -q 'ssh-keygen' "$ROOT/tools/build-update-package.py" &&
     grep -q 'release-signing-private.pem' "$ROOT/.gitignore" &&
     test -s "$ROOT/etc/consolepi/update-allowed-signers" &&
@@ -307,7 +307,7 @@ grep -q 'configure_access_sources' "$ROOT/usr/local/sbin/consolepi-admin-menu" &
 
 grep -q 'TRANSCRIPT_MODE' "$ROOT/etc/consolepi/consolepi.conf" &&
     grep -q 'CITLIVY OBSAH ODSTRANEN' "$ROOT/usr/local/sbin/consolepi-transcript-writer" &&
-    grep -q 'Logování na ConsolePi a ochrana citlivých údajů' "$ROOT/opt/consolepi-web/templates/help.html" &&
+    grep -q 'Logování na ConsolePi+ a ochrana citlivých údajů' "$ROOT/opt/consolepi-web/templates/help.html" &&
     ok "logging privacy modes and help" ||
     bad "logging privacy modes or help missing"
 
@@ -448,7 +448,7 @@ grep -q -- '--firstboot' "$ROOT/install.sh" &&
     grep -q 'management síť' "$ROOT/bootstrap-install.sh" &&
     grep -q 'release-signing-private.pem' "$ROOT/tools/build-install-bundle.sh" &&
     grep -q -- "--exclude='./.DS_Store'" "$ROOT/tools/build-install-bundle.sh" &&
-    grep -q "ConsolePi-$(tr -d '[:space:]' < "$ROOT/VERSION")-install.tar.gz" "$ROOT/README.md" &&
+    grep -q "ConsolePi-Plus-$(tr -d '[:space:]' < "$ROOT/VERSION")-install.tar.gz" "$ROOT/README.md" &&
     grep -q 'New-Item -ItemType Directory' "$ROOT/README.md" &&
     grep -q 'scp -i' "$ROOT/README.md" &&
     grep -q 'ssh-keygen -R IP_RPI' "$ROOT/README.md" &&

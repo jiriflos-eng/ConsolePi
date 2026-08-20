@@ -70,7 +70,7 @@
       <span class="badge offline"><i></i>Čeká na potvrzení</span>
     </div>
     <p>Nové nastavení zůstane aktivní ještě <strong data-network-countdown-value>{{ network_change_pending.remaining_seconds }}</strong> sekund. Potvrďte ho zde, jinak se zařízení automaticky vrátí k původní konfiguraci.</p>
-    <p class="hint" data-network-countdown-message>Odpočet je řízen serverem ConsolePi. Po vypršení se obnoví původní síťový profil.</p>
+    <p class="hint" data-network-countdown-message>Odpočet je řízen serverem ConsolePi+. Po vypršení se obnoví původní síťový profil.</p>
     <form action="{{ url_for('network_confirm_pending') }}" method="post">
       <input type="hidden" name="csrf" value="{{ csrf }}">
       <button type="submit">Potvrdit nové síťové nastavení</button>
@@ -112,7 +112,7 @@
   </form>
   <section class="interface-status access-sources-card">
     <div class="interface-status-head">
-      <div><small>Firewall ConsolePi</small><strong>Povolené zdroje přístupu</strong></div>
+      <div><small>Firewall ConsolePi+</small><strong>Povolené zdroje přístupu</strong></div>
       {% if access_sources.open_access %}
       <span class="badge offline">Otevřeno všem</span>
       {% else %}
@@ -150,7 +150,7 @@
       <label data-access-confirm hidden>Potvrzení pro 0.0.0.0/0<input name="confirmation" placeholder="POVOLIT VŠEM" disabled></label>
       <button type="submit">Povolit zdroj</button>
     </form>
-    <p class="access-sources-warning">Zadání <code>0.0.0.0/0</code> otevře přístup ze všech IPv4 adres. ConsolePi jej přijme pouze po přesném potvrzení <strong>POVOLIT VŠEM</strong>.</p>
+    <p class="access-sources-warning">Zadání <code>0.0.0.0/0</code> otevře přístup ze všech IPv4 adres. ConsolePi+ jej přijme pouze po přesném potvrzení <strong>POVOLIT VŠEM</strong>.</p>
   </section>
   <section class="interface-status proxy-card">
     <div class="interface-status-head">
@@ -196,7 +196,7 @@
         <label>Security mirror:<input name="security_uri" value="{{ repositories.security_uri }}" placeholder="https://apt.example.local/debian-security"></label>
         <label class="proxy-full">Raspberry Pi mirror:<input name="raspberrypi_uri" value="{{ repositories.raspberrypi_uri }}" placeholder="https://apt.example.local/raspberrypi"></label>
       </div>
-      <p class="hint">Před uložením ConsolePi stáhne indexy do odděleného dočasného úložiště. Při chybě se aktivní APT konfigurace nezmění. Proxy nastavujte samostatně výše.</p>
+      <p class="hint">Před uložením ConsolePi+ stáhne indexy do odděleného dočasného úložiště. Při chybě se aktivní APT konfigurace nezmění. Proxy nastavujte samostatně výše.</p>
       <button type="submit">Ověřit a uložit repozitáře</button>
     </form>
   </section>
@@ -209,7 +209,7 @@
       <input type="hidden" name="csrf" value="{{ csrf }}">
       <label class="proxy-toggle"><input type="checkbox" name="lldp" value="yes" {% if discovery.lldp %}checked{% endif %}> LLDP – standardní detekce zařízení</label>
       <label class="proxy-toggle"><input type="checkbox" name="cdp" value="yes" {% if discovery.cdp %}checked{% endif %}> CDP – Cisco Catalyst a další Cisco zařízení</label>
-      <p class="hint">Detekce probíhá pouze na ethernetovém rozhraní ConsolePi. Zařízení odesílá vlastní základní identitu, ale nezveřejňuje inventární údaje.</p>
+      <p class="hint">Detekce probíhá pouze na ethernetovém rozhraní ConsolePi+. Zařízení odesílá vlastní základní identitu, ale nezveřejňuje inventární údaje.</p>
       <button type="submit">Uložit CDP / LLDP</button>
     </form>
     {% if discovery.neighbors %}

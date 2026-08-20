@@ -1,6 +1,6 @@
 # Public release checklist
 
-This repository is intended to become an open source ConsolePi distribution.
+This repository is intended to become an open source ConsolePi Plus distribution.
 Complete every item below before making a GitHub repository public.
 
 ## 1. Select a license
@@ -25,7 +25,7 @@ The generated archive intentionally excludes:
 
 Inspect the archive before uploading:
 
-    tar -tzf dist-public/ConsolePi-*-source.tar.gz
+    tar -tzf dist-public/ConsolePi-Plus-*-source.tar.gz
 
 Never commit private keys, device images made from a configured appliance,
 RADIUS/SNMP passwords, access logs or serial transcripts.
@@ -38,21 +38,22 @@ Create an empty repository under the GitHub account **jiriflos-eng**:
 - visibility: **Private** during first review;
 - do not initialize it with a README, `.gitignore` or license.
 
-Once the repository name exists, ConsolePi can be uploaded through the connected
+Once the repository name exists, ConsolePi Plus can be uploaded through the connected
 GitHub integration. Make it public only after this checklist, including the
 license, is complete.
 
 ## 4. Release artifacts
 
-Publish source and installer archives as GitHub Release assets. A compressed
-`.img.xz` is optional and should be built from a factory-reset image. Publish
-its SHA-256 file alongside it. Do not publish an image that contains a known
-host key, web password, device identity or administrator public key.
+Publish source and installer archives as GitHub Release assets. Use the public
+release title **ConsolePi+ vX.Y.Z** and the `ConsolePi-Plus-X.Y.Z-*` asset-name
+prefix. A compressed `.img.xz` is optional and should be built from a
+factory-reset image. Publish its SHA-256 file alongside it. Do not publish an
+image that contains a known host key, web password, device identity or
+administrator public key.
 
 ## 5. Third-party notices
 
-ConsolePi installs and configures software from Raspberry Pi OS/Debian and
+ConsolePi Plus installs and configures software from Raspberry Pi OS/Debian and
 other upstream projects. Keep their license notices and package licensing
 available. Do not imply endorsement by Raspberry Pi, Debian, Cisco or other
 vendors.
-

@@ -1,4 +1,4 @@
-// consolepi-discover finds ConsolePi devices advertised on the local L2 network.
+// consolepi-discover finds ConsolePi Plus devices advertised on the local L2 network.
 // It deliberately uses mDNS instead of a subnet scan: it is read-only, fast and
 // never probes unrelated hosts.  mDNS multicast does not cross routed networks.
 package main
@@ -107,7 +107,7 @@ func main() {
 		}
 		fmt.Println(string(data))
 	} else if len(devices) == 0 {
-		fmt.Println("No ConsolePi device found on this local network.")
+		fmt.Println("No ConsolePi Plus device found on this local network.")
 		fmt.Println("mDNS does not cross routed networks; use a known IP or an mDNS reflector.")
 	} else {
 		for _, d := range devices {
@@ -116,7 +116,7 @@ func main() {
 	}
 	if *openWeb {
 		if len(devices) != 1 {
-			fatal("--open requires exactly one discovered ConsolePi")
+			fatal("--open requires exactly one discovered ConsolePi Plus device")
 		}
 		if err := openURL(devices[0].HTTPS); err != nil {
 			fatal(err.Error())
@@ -126,7 +126,7 @@ func main() {
 
 func printUsage() {
 	output := flag.CommandLine.Output()
-	fmt.Fprintln(output, "ConsolePi Discovery — nalezení zařízení ConsolePi v aktuální lokální síti.")
+	fmt.Fprintln(output, "ConsolePi Plus Discovery — nalezení zařízení ConsolePi Plus v aktuální lokální síti.")
 	fmt.Fprintln(output, "")
 	fmt.Fprintln(output, "Použití:")
 	fmt.Fprintln(output, "  consolepi-discover [parametry]")
@@ -135,7 +135,7 @@ func printUsage() {
 	fmt.Fprintln(output, "  --shell               Vypíše nalezená zařízení jen do terminálu.")
 	fmt.Fprintln(output, "  --gui                 Kompatibilní alias pro výchozí grafické rozhraní.")
 	fmt.Fprintln(output, "  --generate-key NÁZEV Vytvoří Ed25519 klíč do ~/.ssh/NÁZEV a ~/.ssh/NÁZEV.pub.")
-	fmt.Fprintln(output, "  --open                Otevře HTTPS rozhraní, pokud je nalezen právě jeden ConsolePi.")
+	fmt.Fprintln(output, "  --open                Otevře HTTPS rozhraní, pokud je nalezen právě jeden ConsolePi Plus.")
 	fmt.Fprintln(output, "  --json                Vypíše nalezená zařízení jako JSON.")
 	fmt.Fprintln(output, "  --timeout DÉLKA       Čas pro mDNS hledání (výchozí 4 s, maximum 30 s).")
 	fmt.Fprintln(output, "  -h, --help            Zobrazí tuto nápovědu.")
@@ -152,7 +152,7 @@ func runGUI(timeout time.Duration) error {
 		return fmt.Errorf("open local discovery page: %w", err)
 	}
 	url := "http://" + listener.Addr().String() + "/"
-	fmt.Printf("ConsolePi discovery page: %s\nPress Ctrl+C to close it.\n", url)
+	fmt.Printf("ConsolePi Plus discovery page: %s\nPress Ctrl+C to close it.\n", url)
 	if err := openURL(url); err != nil {
 		listener.Close()
 		return err
@@ -242,17 +242,17 @@ func guiToken() (string, error) {
 
 const guiPage = `<!doctype html>
 <html lang="cs"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ConsolePi Discovery</title>
+<title>ConsolePi Plus Discovery</title>
 <style>
 body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;margin:0;background:#f2f7f6;color:#172c2a}
 main{max-width:760px;margin:56px auto;padding:0 24px}.head{display:flex;justify-content:space-between;align-items:center;gap:16px}
 h1{margin:0;font-size:32px;color:#087e72}p{color:#506966;line-height:1.5}.device{background:white;border:1px solid #cde0dd;border-radius:16px;margin:16px 0;padding:20px;box-shadow:0 5px 18px #0b50400d}
 .address{font:600 20px ui-monospace,SFMono-Regular,Menlo,monospace;margin:7px 0 18px}.hostname{color:#075f56}button{border:0;border-radius:9px;padding:10px 14px;background:#087e72;color:white;font-weight:700;cursor:pointer;margin:3px 6px 0 0}button.secondary{background:#e4f2f0;color:#075f56}input{border:1px solid #cde0dd;border-radius:8px;padding:10px;font:inherit;width:230px;max-width:100%;box-sizing:border-box}.keygen{background:white;border:1px solid #cde0dd;border-radius:16px;margin:24px 0;padding:20px}.keygen h2{margin-top:0}.keygen pre{white-space:pre-wrap;word-break:break-all;background:#edf5f3;border-radius:8px;padding:12px}.keygen small{color:#506966}#status{min-height:24px}.error{color:#a22b2b}.empty{background:white;border-radius:16px;padding:24px}
-</style><body><main><div class="head"><div><h1>ConsolePi Discovery</h1><p>Nalezení zařízení v aktuální lokální síti.</p></div><button id="refresh">Obnovit</button></div><p id="status">Vyhledávám…</p><section id="devices"></section><section class="keygen"><h2>Instalační SSH klíč</h2><p>Klíč se vytvoří pouze v tomto počítači do <code>~/.ssh</code>. Do Raspberry Pi Imageru vložte následně jen veřejný klíč.</p><label for="key-name">Název klíče</label><div><input id="key-name" value="consolepi-admin" autocomplete="off"><button id="generate-key">Vytvořit klíč</button></div><p id="key-status"><small>Existující soubory se nikdy nepřepisují.</small></p></section></main>
+</style><body><main><div class="head"><div><h1>ConsolePi Plus Discovery</h1><p>Nalezení zařízení v aktuální lokální síti.</p></div><button id="refresh">Obnovit</button></div><p id="status">Vyhledávám…</p><section id="devices"></section><section class="keygen"><h2>Instalační SSH klíč</h2><p>Klíč se vytvoří pouze v tomto počítači do <code>~/.ssh</code>. Do Raspberry Pi Imageru vložte následně jen veřejný klíč.</p><label for="key-name">Název klíče</label><div><input id="key-name" value="consolepi-admin" autocomplete="off"><button id="generate-key">Vytvořit klíč</button></div><p id="key-status"><small>Existující soubory se nikdy nepřepisují.</small></p></section></main>
 <script>
 const status=document.getElementById('status'), list=document.getElementById('devices');
 function button(label, kind, handler){const b=document.createElement('button');b.textContent=label;b.className=kind||'';b.onclick=handler;return b}
-function show(devices){list.replaceChildren();if(!devices.length){const e=document.createElement('div');e.className='empty';e.textContent='ConsolePi nebylo v této lokální síti nalezeno.';list.append(e);return} for(const d of devices){const card=document.createElement('article');card.className='device';const title=document.createElement('strong');const hostname=document.createElement('span');hostname.className='hostname';hostname.textContent=d.hostname||d.name;title.append(hostname);let label=d.display_name||'';if(d.location)label+=(label?' ':'')+'('+d.location+')';if(label)title.append(document.createTextNode(' · '+label));const address=document.createElement('div');address.className='address';address.textContent=d.ipv4;card.append(title,address,button('Otevřít web','',()=>window.open(d.https,'_blank','noopener')),button('Kopírovat SSH','secondary',async()=>{try{await navigator.clipboard.writeText(d.ssh);status.textContent='SSH příkaz zkopírován.'}catch{status.textContent='Kopírování selhalo.';status.className='error'}}));list.append(card)}}
+function show(devices){list.replaceChildren();if(!devices.length){const e=document.createElement('div');e.className='empty';e.textContent='ConsolePi Plus nebylo v této lokální síti nalezeno.';list.append(e);return} for(const d of devices){const card=document.createElement('article');card.className='device';const title=document.createElement('strong');const hostname=document.createElement('span');hostname.className='hostname';hostname.textContent=d.hostname||d.name;title.append(hostname);let label=d.display_name||'';if(d.location)label+=(label?' ':'')+'('+d.location+')';if(label)title.append(document.createTextNode(' · '+label));const address=document.createElement('div');address.className='address';address.textContent=d.ipv4;card.append(title,address,button('Otevřít web','',()=>window.open(d.https,'_blank','noopener')),button('Kopírovat SSH','secondary',async()=>{try{await navigator.clipboard.writeText(d.ssh);status.textContent='SSH příkaz zkopírován.'}catch{status.textContent='Kopírování selhalo.';status.className='error'}}));list.append(card)}}
 async function refresh(){status.className='';status.textContent='Vyhledávám…';try{const r=await fetch('/api/devices',{cache:'no-store'});if(!r.ok)throw Error();const d=await r.json();show(d);status.textContent=d.length?'Nalezeno zařízení: '+d.length:'Vyhledávání dokončeno.'}catch{status.textContent='Vyhledávání selhalo.';status.className='error'}}
 document.getElementById('generate-key').onclick=async()=>{const target=document.getElementById('key-status'),name=document.getElementById('key-name').value.trim();target.className='';target.textContent='Vytvářím klíč…';try{const r=await fetch('/api/generate-key',{method:'POST',headers:{'Content-Type':'application/json','X-ConsolePi-Keygen-Token':'__KEYGEN_TOKEN__'},body:JSON.stringify({name})});const data=await r.json().catch(()=>({}));if(!r.ok)throw Error(data.error||'Vytvoření klíče selhalo.');target.replaceChildren();target.append('Veřejný klíč pro Raspberry Pi Imager:');const pre=document.createElement('pre');pre.textContent=data.public_key;target.append(pre,document.createTextNode('Soukromý klíč: '+data.private_path));}catch(error){target.textContent=error.message;target.className='error'}};
 document.getElementById('refresh').onclick=refresh;refresh();
